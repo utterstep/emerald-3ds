@@ -1,0 +1,37 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese text of the port's additions
+Applies after 0064-japanese-walda-phrase.patch; apply with tools/bootstrap.py.
+
+The Exp. Share team message and the summary screen's category label, which the
+Japanese ROM does not have either, in kana and in the game's own words. Other
+languages are unchanged.
+
+diff --git a/src/battle_message.c b/src/battle_message.c
+index 97f12ce..2e90599 100644
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -63,6 +63,10 @@ static const u8 sText_PkmnTeamGainedEXP[] = _("Le reste de votre équipe\ngagne
+ // Italian wording of the port's own message: the retail Italian ROM has no
+ // equivalent line (the French one is authored the same way).
+ static const u8 sText_PkmnTeamGainedEXP[] = _("Il resto della squadra\nriceve punti ESP.!\p");
++#elif defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++// Not in the Japanese ROM either: kana in the game's own words (てもちの ポケモン,
++// ほかの, and けいけんちを もらった！ of the line above), 14 and 12 glyphs.
++static const u8 sText_PkmnTeamGainedEXP[] = _("てもちの　ほかの　ポケモンも\nけいけんちを　もらった！\p");
+ #else
+ static const u8 sText_PkmnTeamGainedEXP[] = _("The rest of your team gained\nEXP. Points!\p");
+ #endif
+diff --git a/src/pokemon_summary_screen.c b/src/pokemon_summary_screen.c
+index eaff1fc..0534a89 100644
+--- a/src/pokemon_summary_screen.c
++++ b/src/pokemon_summary_screen.c
+@@ -1224,6 +1224,10 @@ static const u8 sText_Category[] = _("CATÉG.");
+ #elif defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_ITALIAN
+ // Shortened the same way: CATEGORIA is wider than the label column.
+ static const u8 sText_Category[] = _("CATEG.");
++#elif defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The game's own word for the kinds of moves (the Battle Palace sorts them into
++// しゅるい): 4 glyphs, 32 pixels, left of the icon like いりょく and めいちゅう.
++static const u8 sText_Category[] = _("しゅるい");
+ #else
+ static const u8 sText_Category[] = _("CATEGORY");
+ #endif

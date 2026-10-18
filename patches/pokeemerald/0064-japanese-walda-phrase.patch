@@ -1,0 +1,130 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Walda's phrase in Japanese builds
+Applies after 0063-japanese-trainer-hill.patch; apply with tools/bootstrap.py.
+
+The Japanese ROM's phrase for Walda is 12 characters long (the save keeps the
+international buffer) and takes any characters: each one's code minus 1 gives 6
+bits of the wallpaper data, with no letter table and no check bits. Other
+languages are unchanged.
+
+diff --git a/include/walda_phrase.h b/include/walda_phrase.h
+index 1cfd8af..7a252d9 100644
+--- a/include/walda_phrase.h
++++ b/include/walda_phrase.h
+@@ -1,8 +1,18 @@
+ #ifndef GUARD_WALDA_PHRASE_H
+ #define GUARD_WALDA_PHRASE_H
+ 
++#include "constants/global.h"
++
+ #define WALDA_PHRASE_LENGTH 15
+ 
++// The Japanese ROM's phrase is 12 characters long (the save keeps the
++// international buffer).
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++#define WALDA_PHRASE_ENTRY_LENGTH 12
++#else
++#define WALDA_PHRASE_ENTRY_LENGTH WALDA_PHRASE_LENGTH
++#endif
++
+ u16 TryBufferWaldaPhrase(void);
+ void DoWaldaNamingScreen(void);
+ u16 TryGetWallpaperWithWaldaPhrase(void);
+diff --git a/src/naming_screen.c b/src/naming_screen.c
+index 8226f8b..89e7ca3 100644
+--- a/src/naming_screen.c
++++ b/src/naming_screen.c
+@@ -2141,7 +2141,7 @@ static const struct NamingScreenTemplate sMonNamingScreenTemplate =
+ static const struct NamingScreenTemplate sWaldaWordsScreenTemplate =
+ {
+     .copyExistingString = TRUE,
+-    .maxChars = WALDA_PHRASE_LENGTH,
++    .maxChars = WALDA_PHRASE_ENTRY_LENGTH,
+     .iconFunction = 4,
+     .addGenderIcon = FALSE,
+     .initialPage = KBPAGE_LETTERS_UPPER,
+diff --git a/src/walda_phrase.c b/src/walda_phrase.c
+index e5556b5..75c4c65 100644
+--- a/src/walda_phrase.c
++++ b/src/walda_phrase.c
+@@ -16,13 +16,16 @@ static void CB2_HandleGivenWaldaPhrase(void);
+ static u32 GetWaldaPhraseInputCase(u8 *);
+ static bool32 TryCalculateWallpaper(u16 *, u16 *, u8 *, u8 *, u16, u8 *);
+ static void SetWallpaperDataFromLetter(u8 *, u8 *, u32, u32, u32);
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static u32 GetWallpaperDataBits(u8 *, u32, u32);
++#endif
+ static void RotateWallpaperDataLeft(u8 *, s32, s32);
+ static void MaskWallpaperData(u8 *, u32, u8);
+ 
+ // There are 32 (2^5) unique letters allowed in a successful phrase for Walda.
+ #define BITS_PER_LETTER 5
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE // the Japanese ROM has no letter table
+ // The letters allowed in a successful phrase for Walda
+ // All vowels are excluded, as well as X/x, Y/y, l, r, t, v, w, and z.
+ static const u8 sWaldaLettersTable[1 << BITS_PER_LETTER] =
+@@ -30,6 +33,7 @@ static const u8 sWaldaLettersTable[1 << BITS_PER_LETTER] =
+     CHAR_B, CHAR_C, CHAR_D, CHAR_F, CHAR_G, CHAR_H, CHAR_J, CHAR_K, CHAR_L, CHAR_M, CHAR_N, CHAR_P, CHAR_Q, CHAR_R, CHAR_S, CHAR_T, CHAR_V, CHAR_W, CHAR_Z,
+     CHAR_b, CHAR_c, CHAR_d, CHAR_f, CHAR_g, CHAR_h, CHAR_j, CHAR_k,         CHAR_m, CHAR_n, CHAR_p, CHAR_q,         CHAR_s
+ };
++#endif
+ 
+ enum
+ {
+@@ -111,6 +115,7 @@ u16 TryGetWallpaperWithWaldaPhrase(void)
+     return (bool8)gSpecialVar_Result;
+ }
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static u8 GetLetterTableId(u8 letter)
+ {
+     s32 i;
+@@ -123,6 +128,7 @@ static u8 GetLetterTableId(u8 letter)
+ 
+     return ARRAY_COUNT(sWaldaLettersTable);
+ }
++#endif
+ 
+ // Attempts to generate a wallpaper based on the given trainer id and phrase.
+ // Returns TRUE if successful and sets the wallpaper results to the given pointers.
+@@ -147,6 +153,19 @@ static bool32 TryCalculateWallpaper(u16 *backgroundClr, u16 *foregroundClr, u8 *
+     u8 charsByTableId[WALDA_PHRASE_LENGTH];
+     u16 *ptr;
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM takes any 12 characters, with no letter table: each one's
++    // code minus 1 gives its low 6 bits, and the 12 x 6 bits fill the 72 bits of
++    // the data array, so no bits are left to check.
++    if (StringLength(phrase) != WALDA_PHRASE_ENTRY_LENGTH)
++        return FALSE;
++
++    for (i = 0; i < WALDA_PHRASE_ENTRY_LENGTH; i++)
++        charsByTableId[i] = phrase[i] - 1;
++
++    for (i = 0; i < WALDA_PHRASE_ENTRY_LENGTH; i++)
++        SetWallpaperDataFromLetter(data, charsByTableId, 6 * i, 2 + 8 * i, 6);
++#else
+     // Reject any phrase that does not use the full length
+     if (StringLength(phrase) != WALDA_PHRASE_LENGTH)
+         return FALSE;
+@@ -173,6 +192,7 @@ static bool32 TryCalculateWallpaper(u16 *backgroundClr, u16 *foregroundClr, u8 *
+     // Reject the phrase if they are not already the same
+     if (GetWallpaperDataBits(data, 0, 3) != GetWallpaperDataBits(charsByTableId, TO_BIT_OFFSET(WALDA_PHRASE_LENGTH - 1) + 2, 3))
+         return FALSE;
++#endif
+ 
+     // Perform some relatively arbitrary changes to the wallpaper data using the last byte (KEY)
+     RotateWallpaperDataLeft(data, NUM_WALLPAPER_DATA_BYTES,     21);
+@@ -264,6 +284,7 @@ static void SetWallpaperDataFromLetter(u8 *data, u8 *letterTableIds, u32 setOffs
+     }
+ }
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static u32 GetWallpaperDataBits(u8 *data, u32 offset, u32 numBits)
+ {
+     u32 bits, i;
+@@ -276,3 +297,4 @@ static u32 GetWallpaperDataBits(u8 *data, u32 offset, u32 numBits)
+ 
+     return bits;
+ }
++#endif

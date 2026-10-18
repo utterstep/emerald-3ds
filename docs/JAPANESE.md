@@ -2,8 +2,8 @@
 
 **Status: experimental, not tested on a console.** `tools/localize_japanese.py`
 stages the Japanese game data from the player's ROM: texts, graphics, credits,
-the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061, 0070–0073 and
-0083 make a Japanese build behave like the Japanese game, and
+the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061, 0063, 0064, 0066,
+0070–0073 and 0083 make a Japanese build behave like the Japanese game, and
 `tools/bootstrap.py`, the builders, the web builder and the release scripts
 accept that ROM ([Building the Japanese game](#building-the-japanese-game)).
 Some screens and features are still open ([Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)).
@@ -121,7 +121,10 @@ Graphics that need code, with what differs:
   modes (Normal, Variety, Unique, Expert): it has one challenge of two floors,
   the decomp's unused `sChallenge_JPDefault`/`sFloors_JPDefault`, whose data
   equals the decomp's but with another trainer record layout (944-byte floors).
-  The four tables stay English (`floors_skipped`).
+  The four tables stay English (`floors_skipped`). Patch 0063 runs that challenge
+  from the decomp's own data: compiled and converted to the 944-byte layout, the
+  header, both floors and their mazes equal the ROM's (0x5faf38), so nothing is
+  staged.
 - **Easy Chat id lists.** The four move and Pokémon lists that
   `tools/locale_lists.py` reorders are at ROM offsets 0x574584, 0x57861c,
   0x578750 and 0x578b1c (the groups table's slots 0, 18, 19 and 21), with the
@@ -222,11 +225,11 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
 
 ## Code changes a Japanese build needs
 
-Done in this repository, marked *done* below: patches 0057–0061 (item 1, the
-name length of item 2, item 4 but the Pokédex page, item 5 but the bard, the
-credits' scene pages and the two-floor Trainer Hill), patches 0070–0073 and
-0083 (credits page delay, contest results title bar, menu info icons, title
-screen version logo palettes, title screen logo layout), all behind
+Done in this repository, marked *done* below: patches 0057–0061, 0063, 0064 and
+0066 (item 1, the name lengths of item 2, item 4 but the Pokédex page, item 5
+but the bard and the credits' scene pages, item 7), patches 0070–0073 and 0083
+(credits page delay, contest results title bar, menu info icons, title screen
+version logo palettes, title screen logo layout), all behind
 `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI (3) and the integration (8).
 The other items are open.
 
@@ -242,9 +245,12 @@ The other items are open.
    `IsForeignGameLanguage` keeps the Latin-script games out of the Union Room
    and the trainer records.
 2. **Names and keyboards.** Player and Pokémon names of 5 characters (*done*,
-   0059; Walda's phrase, 12 characters in that ROM, still takes 15); kana pages
-   for the naming screen, the Union Room chat and the Easy Chat keyboard (a
-   45-entry index by kana rows instead of A–Z), with their graphics above.
+   0059) and Walda's phrase of 12 (*done*, 0064: as in that ROM, any 12
+   characters, each one's code minus 1 giving 6 bits of the wallpaper data, with
+   no letter table and no check bits; the save keeps the 15-character buffer);
+   kana pages for the naming screen, the Union Room chat and the Easy Chat
+   keyboard (a 45-entry index by kana rows instead of A–Z), with their graphics
+   above.
 3. **Port UI** (done). The bottom screen and the HD battle box draw both glyph
    sets (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and every
    `CTR_TEXT` has its Japanese label: kana only, in the game's own words where
@@ -268,11 +274,38 @@ The other items are open.
    30, 37, 42) where the decomp spaces them by `PAGE_COUNT / 9`. *Done* (0060):
    no closed state and no refusal; the wild/foe prefix stays in front of the
    name (0058); apprentices need no code (`GetApprenticeNameInLanguage` gives
-   the Japanese name, slot 0). Open: the bard, the credits' scene pages and the
-   two-floor challenge (the four international modes stay, with English floors).
+   the Japanese name, slot 0). *Done* (0063): the two-floor challenge, which the
+   attendant starts without asking for a tag match type; the challenge id in the
+   save (`trainerHill.unused`) keeps one best time, reset with the prize when the
+   challenge changes (the international game keeps a time per mode instead), and
+   the time board lists each floor's two trainers above the clear time, as that
+   ROM does. The e-Reader challenges that ROM can also load are not supported (the
+   port cannot scan cards); the time board's window keeps the international width
+   (26 tiles; the Japanese one is 27, its text fits in both). Open, as read in
+   that ROM's code:
+   - *The bard.* Its song task walks the printed lyrics one character at a
+     time. A table indexed by character code (0x5d2b4c, `{s16 song, u16
+     volume}`) gives each kana one of the sounds SE_A–SE_O and SE_N (25–30,
+     still in the decomp's song table), っ and punctuation a rest, ー and ⋯ a
+     held note; each note lasts 16 frames, and its pitch is the next value of
+     the `sPitchTables` row chosen by the word's length in kana and its Easy
+     Chat id (`(word & 3) + ((word >> 3) & 1)`). Spaces, line breaks and
+     control codes pause. The decomp's per-word phoneme templates
+     (`src/data/bard_music/`, `BardSing`) have no counterpart there. Doing it
+     means a Japanese song task and staging that table; the Japanese build
+     sings with the international code.
+   - *The credits' scene pages.* That ROM's `CheckChangeScene` changes scenes
+     at pages 5, 9, 14, 20, 25, 30, 37 and 42 and also cues the bike scenes at
+     pages 1, 22 and 35, where the decomp uses frame timers, and its Pokémon
+     interludes show 56 Pokémon, one every 64 frames (71 every 50 frames in the
+     decomp). The Japanese build keeps the decomp's spacing (pages 5, 10, …, 40).
 6. **Screens with another layout:** the graphics listed above.
-7. **Port additions** that need their own Japanese text: the Exp. Share team
-   message and the summary screen's category label.
+7. **Port additions** that need their own Japanese text (*done*, 0066): the
+   Exp. Share team message, てもちの　ほかの　ポケモンも／けいけんちを　もらった！
+   (the ROM's てもちの ポケモン and its own line for one Pokémon's EXP; 14 and 12
+   glyphs in the 26-tile battle message box), and the summary screen's category
+   label, しゅるい (the word the Battle Palace sorts moves by; 32 pixels left of the
+   icon, like いりょく and めいちゅう below it).
 8. **Integration** (done): builder and web builder acceptance of BPEJ, the ROM
    guard in `3ds_data.c`, `bootstrap.py --japanese-rom`, the release's
    `payload/ja/` and Japanese follower texts. Open: a fuller reference symbol
