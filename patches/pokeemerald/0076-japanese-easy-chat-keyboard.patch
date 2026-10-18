@@ -1,0 +1,972 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese Easy Chat keyboard
+Applies after 0005-port-hooks.patch; apply with tools/bootstrap.py.
+
+The Japanese ROM's Easy Chat keyboard: the alphabet mode picks words by kana row
+(あ to わ and そのた, the others) from all 45 gEasyChatWordsByLetterPointers lists,
+which tools/localize_japanese.py stages in the ROM's kana order with the keyboard's
+rows of text (gText_EasyChatKeyboard_*). Group names and words are in three
+columns, at the ROM's positions, and the rectangle cursor is one sprite of the
+Japanese graphics. The main screen is the Japanese one too: phrases of three words
+a row (3x2 and 3x3 instead of 2x3 and 2x5) in the ROM's frames, the words run on a
+tile a character, the title, messages and cursor sit where the ROM puts them, and
+the footer's labels are in the window graphics. Staging puts the cursor and window
+graphics only into a tree with this patch (it looks for EASY_CHAT_KANA_KEYBOARD).
+
+diff --git a/include/easy_chat.h b/include/easy_chat.h
+index 0434bb0..97fc9b6 100644
+--- a/include/easy_chat.h
++++ b/include/easy_chat.h
+@@ -103,12 +103,20 @@ struct EasyChatGroup
+     u16 numEnabledWords;
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese keyboard's word groups: the others and the 44 kana rows あ to わ, all
++// of gEasyChatWordsByLetterPointers
++#define EC_NUM_KEYBOARD_GROUPS (EC_NUM_ALPHABET_GROUPS + 18)
++#else
++#define EC_NUM_KEYBOARD_GROUPS EC_NUM_ALPHABET_GROUPS
++#endif
++
+ struct EasyChatScreenWordData
+ {
+     u16 numUnlockedGroups;
+     u16 unlockedGroupIds[EC_NUM_GROUPS];
+-    u16 numUnlockedAlphabetWords[EC_NUM_ALPHABET_GROUPS];
+-    u16 unlockedAlphabetWords[EC_NUM_ALPHABET_GROUPS][EC_MAX_WORDS_IN_GROUP];
++    u16 numUnlockedAlphabetWords[EC_NUM_KEYBOARD_GROUPS];
++    u16 unlockedAlphabetWords[EC_NUM_KEYBOARD_GROUPS][EC_MAX_WORDS_IN_GROUP];
+     u8 unused[44];
+     u16 selectedGroupWords[EC_MAX_WORDS_IN_GROUP];
+     u16 numSelectedGroupWords;
+diff --git a/src/easy_chat.c b/src/easy_chat.c
+index 5fdf762..57e736b 100644
+--- a/src/easy_chat.c
++++ b/src/easy_chat.c
+@@ -120,7 +120,9 @@ static void InitEasyChatBgs(void);
+ static void AdjustBgTilemapForFooter(void);
+ static void BufferFrameTilemap(u16 *);
+ static void AddPhraseWindow(void);
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static void AddMainScreenButtonWindow(void);
++#endif
+ static void PrintTitle(void);
+ static void PrintInitialInstructions(void);
+ static void PrintCurrentPhrase(void);
+@@ -162,7 +164,9 @@ static bool8 ShowCantDeleteLyricsMsg(void);
+ static bool8 ShowCombineTwoWordsMsg(void);
+ static bool8 ShowCantExitMsg(void);
+ static void SetMainCursorPos(u8, u8);
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static int GetFooterOptionXOffset(int);
++#endif
+ static void StopMainCursorAnim(void);
+ static void PrintEasyChatStdMessage(u8);
+ static void CreateEasyChatYesNoMenu(u8);
+@@ -216,6 +220,9 @@ static u16 GetRandomUnlockedEasyChatPokemon(void);
+ static void SetUnlockedEasyChatGroups(void);
+ static void SetUnlockedWordsByAlphabet(void);
+ static u8 *CopyEasyChatWordPadded(u8 *, u16, u16);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++static u16 GetEasyChatWordStringLength(u16);
++#endif
+ static u8 IsEasyChatWordUnlocked(u16);
+ static u16 SetSelectedWordGroup_GroupMode(u16);
+ static u16 SetSelectedWordGroup_AlphabetMode(u16);
+@@ -337,9 +344,33 @@ enum {
+ #define NUM_WORD_SELECT_ROWS 4
+ #define NUM_BUTTON_ROWS      3
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// EASY_CHAT_KANA_KEYBOARD: the Japanese keyboard picks words by kana row (あいうえお
++// なにぬねの やゆよ わ / かきくけこ はひふへほ そのた / さしすせそ まみむめも /
++// たちつてと らりるれろ: GetSelectedAlphabetGroupId), its rows of text staged as
++// the gText_EasyChatKeyboard_* texts and its word lists as gEasyChatWordsByLetter_*;
++// group names and words are in three columns, and the rectangle cursor is one sprite.
++// The main screen is the Japanese one too: phrases of 3 words a row (3x2 instead of
++// 2x3, 3x3 instead of 2x5) in other frames, the words run on a tile a character
++// (PrintCurrentPhrase), and the footer's labels are in the window graphics.
++#define NUM_ALPHABET_COLUMNS    14
++#define NUM_GROUP_NAME_COLUMNS  3
++#define NUM_WORD_SELECT_COLUMNS 3
++#define PHRASE_2x3_COLUMNS      3
++#define PHRASE_2x3_ROWS         2
++#define PHRASE_2x5_COLUMNS      3
++#define PHRASE_2x5_ROWS         3
++#define FOOTER_TILEMAP_TOP      10
++#else
+ #define NUM_ALPHABET_COLUMNS    7
+ #define NUM_GROUP_NAME_COLUMNS  2
+ #define NUM_WORD_SELECT_COLUMNS 2
++#define PHRASE_2x3_COLUMNS      2
++#define PHRASE_2x3_ROWS         3
++#define PHRASE_2x5_COLUMNS      2
++#define PHRASE_2x5_ROWS         5
++#define FOOTER_TILEMAP_TOP      11
++#endif
+ 
+ enum {
+     FRAMEID_GENERAL_2x2,
+@@ -440,8 +471,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_BATTLE_START,
+-        .numColumns = 2,
+-        .numRows = 3,
++        .numColumns = PHRASE_2x3_COLUMNS,
++        .numRows = PHRASE_2x3_ROWS,
+         .frameId = FRAMEID_GENERAL_2x3,
+         .fourFooterOptions = FALSE,
+         .titleText = gText_AtTheBattlesStart,
+@@ -452,8 +483,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_BATTLE_WON,
+-        .numColumns = 2,
+-        .numRows = 3,
++        .numColumns = PHRASE_2x3_COLUMNS,
++        .numRows = PHRASE_2x3_ROWS,
+         .frameId = FRAMEID_GENERAL_2x3,
+         .fourFooterOptions = FALSE,
+         .titleText = gText_UponWinningABattle,
+@@ -464,8 +495,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_BATTLE_LOST,
+-        .numColumns = 2,
+-        .numRows = 3,
++        .numColumns = PHRASE_2x3_COLUMNS,
++        .numRows = PHRASE_2x3_ROWS,
+         .frameId = FRAMEID_GENERAL_2x3,
+         .fourFooterOptions = FALSE,
+         .titleText = gText_UponLosingABattle,
+@@ -476,8 +507,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_MAIL,
+-        .numColumns = 2,
+-        .numRows = 5,
++        .numColumns = PHRASE_2x5_COLUMNS,
++        .numRows = PHRASE_2x5_ROWS,
+         .frameId = FRAMEID_MAIL,
+         .fourFooterOptions = FALSE,
+         .titleText = NULL,
+@@ -500,8 +531,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_BARD_SONG,
+-        .numColumns = 2,
+-        .numRows = 3,
++        .numColumns = PHRASE_2x3_COLUMNS,
++        .numRows = PHRASE_2x3_ROWS,
+         .frameId = FRAMEID_GENERAL_2x3,
+         .fourFooterOptions = FALSE,
+         .titleText = gText_TheBardsSong,
+@@ -536,8 +567,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_QUIZ_QUESTION,
+-        .numColumns = 2,
+-        .numRows = 5,
++        .numColumns = PHRASE_2x5_COLUMNS,
++        .numRows = PHRASE_2x5_ROWS,
+         .frameId = FRAMEID_QUIZ_QUESTION,
+         .fourFooterOptions = TRUE,
+         .titleText = NULL,
+@@ -560,8 +591,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_QUIZ_SET_QUESTION,
+-        .numColumns = 2,
+-        .numRows = 5,
++        .numColumns = PHRASE_2x5_COLUMNS,
++        .numRows = PHRASE_2x5_ROWS,
+         .frameId = FRAMEID_QUIZ_SET_QUESTION,
+         .fourFooterOptions = TRUE,
+         .titleText = NULL,
+@@ -584,8 +615,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_BARD_SONG,
+-        .numColumns = 2,
+-        .numRows = 3,
++        .numColumns = PHRASE_2x3_COLUMNS,
++        .numRows = PHRASE_2x3_ROWS,
+         .frameId = FRAMEID_GENERAL_2x3,
+         .fourFooterOptions = FALSE,
+         .titleText = gText_TheBardsSong,
+@@ -596,8 +627,8 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+     {
+         .type = EASY_CHAT_TYPE_APPRENTICE,
+-        .numColumns = 2,
+-        .numRows = 3,
++        .numColumns = PHRASE_2x3_COLUMNS,
++        .numRows = PHRASE_2x3_ROWS,
+         .frameId = FRAMEID_GENERAL_2x3,
+         .fourFooterOptions = FALSE,
+         .titleText = gText_ApprenticesPhrase,
+@@ -680,6 +711,7 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+ };
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ // IDs are used indirectly as indexes into gEasyChatWordsByLetterPointers
+ // 0 is 'Others', 1-26 are the letters A-Z
+ // This array maps the group IDs to the alphabet keyboard
+@@ -689,6 +721,7 @@ static const u8 sAlphabetGroupIdMap[NUM_ALPHABET_ROWS][NUM_ALPHABET_COLUMNS] = {
+     {13, 14, 15, 16, 17, 18, 19},
+     {20, 21, 22, 23, 24, 25, 26},
+ };
++#endif
+ 
+ static const u16 sMysteryGiftPhrase[NUM_QUESTIONNAIRE_WORDS] = {
+     EC_WORD_LINK,
+@@ -721,6 +754,71 @@ static const u16 sTitleText_Pal[] = INCBIN_U16("graphics/easy_chat/title_text.gb
+ static const u16 sText_Pal[] = INCBIN_U16("graphics/easy_chat/text.gbapal");
+ 
+ static const struct EasyChatPhraseFrameDimensions sPhraseFrameDimensions[] = {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    [FRAMEID_GENERAL_2x2] = {
++        .left = 6,
++        .top = 4,
++        .width = 18,
++        .height = 4,
++        .footerId = FOOTER_NORMAL,
++    },
++    [FRAMEID_GENERAL_2x3] = {
++        .left = 1,
++        .top = 4,
++        .width = 27,
++        .height = 4,
++        .footerId = FOOTER_NORMAL,
++    },
++    [FRAMEID_MAIL] = {
++        .left = 1,
++        .top = 2,
++        .width = 28,
++        .height = 6,
++        .footerId = FOOTER_NORMAL,
++    },
++    [FRAMEID_COMBINE_TWO_WORDS] = {
++        .left = 6,
++        .top = 4,
++        .width = 18,
++        .height = 2,
++        .footerId = FOOTER_NORMAL,
++    },
++    [FRAMEID_INTERVIEW_SHOW_PERSON] = {
++        .left = 16,
++        .top = 4,
++        .width = 9,
++        .height = 2,
++        .footerId = FOOTER_NORMAL,
++    },
++    [FRAMEID_INTERVIEW] = {
++        .left = 11,
++        .top = 4,
++        .width = 18,
++        .height = 4,
++        .footerId = FOOTER_NORMAL,
++    },
++    [FRAMEID_QUIZ_ANSWER] = {
++        .left = 10,
++        .top = 4,
++        .width = 10,
++        .height = 2,
++        .footerId = FOOTER_QUIZ,
++    },
++    [FRAMEID_QUIZ_QUESTION] = {
++        .left = 1,
++        .top = 6,
++        .width = 28,
++        .height = 6,
++        .footerId = NUM_FOOTER_TYPES,
++    },
++    [FRAMEID_QUIZ_SET_QUESTION] = {
++        .left = 1,
++        .top = 2,
++        .width = 28,
++        .height = 6,
++        .footerId = FOOTER_ANSWER,
++    },
++#else
+     [FRAMEID_GENERAL_2x2] = {
+         .left = 3,
+         .top = 4,
+@@ -784,6 +882,7 @@ static const struct EasyChatPhraseFrameDimensions sPhraseFrameDimensions[] = {
+         .height = 10,
+         .footerId = FOOTER_ANSWER,
+     },
++#endif
+ };
+ 
+ static const struct BgTemplate sEasyChatBgTemplates[] = {
+@@ -828,18 +927,30 @@ static const struct BgTemplate sEasyChatBgTemplates[] = {
+ static const struct WindowTemplate sEasyChatWindowTemplates[] = {
+     [WIN_TITLE] = {
+         .bg = 1,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        .tilemapLeft = 7,
++        .tilemapTop = 0,
++        .width = 16,
++#else
+         .tilemapLeft = 6,
+         .tilemapTop = 0,
+         .width = 18,
++#endif
+         .height = 2,
+         .paletteNum = 10,
+         .baseBlock = 0x10,
+     },
+     [WIN_MSG] = {
+         .bg = 0,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        .tilemapLeft = 4,
++        .tilemapTop = 15,
++        .width = 22,
++#else
+         .tilemapLeft = 3,
+         .tilemapTop = 15,
+         .width = 24,
++#endif
+         .height = 4,
+         .paletteNum = 15,
+         .baseBlock = 0xA,
+@@ -863,10 +974,16 @@ static const struct WindowTemplate sEasyChatYesNoWindowTemplate = {
+     .width = 5,
+     .height = 4,
+     .paletteNum = 15,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    .baseBlock = 0x62,
++#else
+     .baseBlock = 0x6A,
++#endif
+ };
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static const u8 sText_Clear17[] = _("{CLEAR 17}");
++#endif
+ 
+ static const u8 *const sEasyChatKeyboardAlphabet[NUM_ALPHABET_ROWS] =
+ {
+@@ -938,7 +1055,9 @@ static const struct CompressedSpriteSheet sCompressedSpriteSheets[] = {
+     },
+ };
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static const u8 sAlphabetKeyboardColumnOffsets[NUM_ALPHABET_COLUMNS] = {0, 12, 24, 56, 68, 80, 92};
++#endif
+ 
+ static const struct OamData sOamData_TriangleCursor = {
+     .y = 0,
+@@ -1197,6 +1316,14 @@ static const struct SpriteTemplate sSpriteTemplate_ScrollIndicator =
+     .callback = SpriteCallbackDummy,
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The footer's labels are in the window graphics: the cursor's tile for each
++// option, with three options or with four (quiz, answer)
++static const u8 sFooterOptionXTiles[2][4] = {
++    {3, 10, 17, 17},
++    {3, 10, 15, 21},
++};
++#else
+ static const u8 sFooterOptionXOffsets[NUM_FOOTER_TYPES][4] = {
+     [FOOTER_NORMAL] = {16, 111, 196,   0},
+     [FOOTER_QUIZ]   = {16,  78, 130, 160},
+@@ -1208,6 +1335,7 @@ static const u8 *const sFooterTextOptions[NUM_FOOTER_TYPES][4] = {
+     [FOOTER_QUIZ]   = {gText_DelAll, gText_Cancel5, gText_Ok2, gText_Quiz},
+     [FOOTER_ANSWER] = {gText_DelAll, gText_Cancel5, gText_Ok2, gText_Answer},
+ };
++#endif
+ 
+ #include "data/easy_chat/easy_chat_groups.h"
+ #include "data/easy_chat/easy_chat_words_by_letter.h"
+@@ -1684,7 +1812,7 @@ static bool8 InitEasyChatScreenStruct(u8 type, u16 *words, u8 displayedPersonTyp
+         sEasyChatScreen->savedPhrase = sEasyChatScreen->currentPhrase;
+     }
+ 
+-    sEasyChatScreen->keyboardLastRow = (GetNumUnlockedEasyChatGroups() - 1) / 2 + 1;
++    sEasyChatScreen->keyboardLastRow = (GetNumUnlockedEasyChatGroups() - 1) / NUM_GROUP_NAME_COLUMNS + 1;
+     return TRUE;
+ }
+ 
+@@ -2222,7 +2350,7 @@ static int SelectKeyboardGroup(void)
+     if (numWords == 0)
+         return ECFUNC_NONE;
+ 
+-    sEasyChatScreen->wordSelectLastRow = (numWords - 1) / 2;
++    sEasyChatScreen->wordSelectLastRow = (numWords - 1) / NUM_WORD_SELECT_COLUMNS;
+     sEasyChatScreen->wordSelectScrollOffset = 0;
+     sEasyChatScreen->wordSelectColumn = 0;
+     sEasyChatScreen->wordSelectRow = 0;
+@@ -2409,7 +2537,7 @@ static int MoveKeyboardCursor_GroupNames(u32 input)
+ 
+         return ECFUNC_UPDATE_KEYBOARD_CURSOR;
+     case INPUT_RIGHT:
+-        if (sEasyChatScreen->keyboardColumn < 1)
++        if (sEasyChatScreen->keyboardColumn < NUM_GROUP_NAME_COLUMNS - 1)
+         {
+             sEasyChatScreen->keyboardColumn++;
+             if (IsSelectedKeyboardIndexInvalid())
+@@ -2504,7 +2632,7 @@ static void SetKeyboardCursorToLastColumn(void)
+ {
+     if (!sEasyChatScreen->inAlphabetMode)
+     {
+-        sEasyChatScreen->keyboardColumn = 1;
++        sEasyChatScreen->keyboardColumn = NUM_GROUP_NAME_COLUMNS - 1;
+         ReduceToValidKeyboardColumn();
+     }
+     else
+@@ -2558,12 +2686,12 @@ static u16 MoveWordSelectCursor(u32 input)
+         if (sEasyChatScreen->wordSelectColumn > 0)
+             sEasyChatScreen->wordSelectColumn--;
+         else
+-            sEasyChatScreen->wordSelectColumn = 1;
++            sEasyChatScreen->wordSelectColumn = NUM_WORD_SELECT_COLUMNS - 1;
+ 
+         ReduceToValidWordSelectColumn();
+         return ECFUNC_UPDATE_WORD_SELECT_CURSOR;
+     case INPUT_RIGHT:
+-        if (sEasyChatScreen->wordSelectColumn < 1)
++        if (sEasyChatScreen->wordSelectColumn < NUM_WORD_SELECT_COLUMNS - 1)
+         {
+             sEasyChatScreen->wordSelectColumn++;
+             if (IsSelectedWordIndexInvalid())
+@@ -2613,12 +2741,37 @@ static u16 GetSelectedGroupIndex(void)
+     return NUM_GROUP_NAME_COLUMNS * (sEasyChatScreen->keyboardRow + sEasyChatScreen->keyboardScrollOffset) + sEasyChatScreen->keyboardColumn;
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// gEasyChatWordsByLetterPointers: 0 is the others (そのた), 1-44 the kana rows あ to わ
++static int GetSelectedAlphabetGroupId(void)
++{
++    int column = sEasyChatScreen->keyboardColumn;
++    int row = sEasyChatScreen->keyboardRow;
++
++    if (column < 5)
++        return row * 5 + column + 1;   // あ-と
++    if (column < 10)
++    {
++        if (row < 3)
++            return row * 5 + column + 16;  // な-も
++        return column + 34;             // ら-ろ
++    }
++    if (column < 13)
++    {
++        if (row == 0)
++            return column + 26;         // や-よ
++        return 0;                       // そのた
++    }
++    return 44;                          // わ
++}
++#else
+ static int GetSelectedAlphabetGroupId(void)
+ {
+     int column = (u8)sEasyChatScreen->keyboardColumn < NUM_ALPHABET_COLUMNS ? sEasyChatScreen->keyboardColumn : 0;
+     int row = (u8)sEasyChatScreen->keyboardRow < NUM_ALPHABET_ROWS ? sEasyChatScreen->keyboardRow : 0;
+     return sAlphabetGroupIdMap[row][column];
+ }
++#endif
+ 
+ static u16 GetSelectedWordIndex(void)
+ {
+@@ -2628,6 +2781,18 @@ static u16 GetSelectedWordIndex(void)
+ // Get the index of the last column in the alphabet keyboard, depending on current row
+ static u8 GetLastAlphabetColumn(u8 row)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // わ, そのた (one key) and the five-kana groups ending the other rows
++    switch (row)
++    {
++    case 0:
++        return NUM_ALPHABET_COLUMNS - 1;
++    case 1:
++        return 10;
++    default:
++        return 9;
++    }
++#else
+     switch (row)
+     {
+     case 0:
+@@ -2637,6 +2802,7 @@ static u8 GetLastAlphabetColumn(u8 row)
+         return NUM_ALPHABET_COLUMNS - 2; // At 6 letters, only the 2nd row (index 1) has less than the max columns
+                                          // The 3rd and 4th row have 7 letters, the 1st row has 6 letters and 'Others'
+     }
++#endif
+ }
+ 
+ static void ReduceToValidKeyboardColumn(void)
+@@ -3041,7 +3207,9 @@ static bool8 LoadEasyChatScreen(void)
+         AdjustBgTilemapForFooter();
+         BufferFrameTilemap(sScreenControl->bg1TilemapBuffer);
+         AddPhraseWindow();
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+         AddMainScreenButtonWindow();
++#endif
+         CopyBgTilemapBufferToVram(3);
+         break;
+     case 2:
+@@ -3162,6 +3330,43 @@ static bool8 ReprintPhrase(void)
+     return TRUE;
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese phrase is a tile a character: the cursor goes past the earlier words
++// and their two spaces, 5 tiles for an empty word (PrintCurrentPhrase)
++static bool8 UpdateMainCursor(void)
++{
++    u8 i;
++    u16 *ecWord;
++    u8 frameId;
++    u8 cursorColumn, cursorRow;
++    u16 x;
++
++    ecWord = GetCurrentPhrase();
++    frameId = GetEasyChatScreenFrameId();
++    cursorColumn = GetMainCursorColumn();
++    cursorRow = GetMainCursorRow();
++    ecWord += cursorRow * GetNumColumns();
++    x = sPhraseFrameDimensions[frameId].left + 1;
++    for (i = 0; i < cursorColumn; i++)
++    {
++        if (*ecWord == EC_EMPTY_WORD)
++            x += 5 + 2;
++        else
++            x += GetEasyChatWordStringLength(*ecWord) + 2;
++        ecWord++;
++    }
++
++    SetMainCursorPos(x * 8 + 4, (sPhraseFrameDimensions[frameId].top + cursorRow * 2) * 8 + 8);
++    return FALSE;
++}
++
++static bool8 UpdateMainCursorOnButtons(void)
++{
++    u8 x = sFooterOptionXTiles[sScreenControl->fourFooterOptions][GetMainCursorColumn()];
++    SetMainCursorPos(x * 8 + 4, FOOTER_TILEMAP_TOP * 8 + 8);
++    return FALSE;
++}
++#else
+ static bool8 UpdateMainCursor(void)
+ {
+     u8 i;
+@@ -3210,6 +3415,7 @@ static bool8 UpdateMainCursorOnButtons(void)
+     SetMainCursorPos(xOffset, 96);
+     return FALSE;
+ }
++#endif
+ 
+ static bool8 ShowConfirmExitPrompt(void)
+ {
+@@ -3945,9 +4151,16 @@ static void PrintTitle(void)
+     if (!titleText)
+         return;
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // Centered in the window's 16 tiles, a tile a character
++    xOffset = (16 - StringLength(titleText)) / 2 * 8;
++    FillWindowPixelBuffer(WIN_TITLE, PIXEL_FILL(0));
++    PrintEasyChatTextWithColors(WIN_TITLE, FONT_NORMAL, titleText, xOffset, 2, TEXT_SKIP_DRAW, TEXT_COLOR_TRANSPARENT, TEXT_COLOR_DARK_GRAY, TEXT_COLOR_LIGHT_GRAY);
++#else
+     xOffset = GetStringCenterAlignXOffset(FONT_NORMAL, titleText, 144);
+     FillWindowPixelBuffer(WIN_TITLE, PIXEL_FILL(0));
+     PrintEasyChatTextWithColors(WIN_TITLE, FONT_NORMAL, titleText, xOffset, 1, TEXT_SKIP_DRAW, TEXT_COLOR_TRANSPARENT, TEXT_COLOR_DARK_GRAY, TEXT_COLOR_LIGHT_GRAY);
++#endif
+     PutWindowTilemap(WIN_TITLE);
+     CopyWindowToVram(WIN_TITLE, COPYWIN_FULL);
+ }
+@@ -4017,11 +4230,19 @@ static void PrintEasyChatStdMessage(u8 msgId)
+     }
+ 
+     FillWindowPixelBuffer(WIN_MSG, PIXEL_FILL(1));
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (text1)
++        PrintEasyChatText(WIN_MSG, FONT_NORMAL, text1, 0, 2, TEXT_SKIP_DRAW, 0);
++
++    if (text2)
++        PrintEasyChatText(WIN_MSG, FONT_NORMAL, text2, 0, 18, TEXT_SKIP_DRAW, 0);
++#else
+     if (text1)
+         PrintEasyChatText(WIN_MSG, FONT_NORMAL, text1, 0, 1, TEXT_SKIP_DRAW, 0);
+ 
+     if (text2)
+         PrintEasyChatText(WIN_MSG, FONT_NORMAL, text2, 0, 17, TEXT_SKIP_DRAW, 0);
++#endif
+ 
+     CopyWindowToVram(WIN_MSG, COPYWIN_FULL);
+ }
+@@ -4043,11 +4264,63 @@ static void AddPhraseWindow(void)
+     template.width = sPhraseFrameDimensions[frameId].width;
+     template.height = sPhraseFrameDimensions[frameId].height;
+     template.paletteNum = 11;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    template.baseBlock = 0x30;
++#else
+     template.baseBlock = 0x6C;
++#endif
+     sScreenControl->windowId = AddWindow(&template);
+     PutWindowTilemap(sScreenControl->windowId);
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The words run on, two spaces after each and five underscores for an empty one
++static void PrintCurrentPhrase(void)
++{
++    u16 *currentPhrase;
++    u8 numColumns, numRows;
++    u8 *str;
++    int i, j, k;
++
++    currentPhrase = GetCurrentPhrase();
++    numColumns = GetNumColumns();
++    numRows = GetNumRows();
++
++    FillWindowPixelBuffer(sScreenControl->windowId, PIXEL_FILL(1));
++    for (i = 0; i < numRows; i++)
++    {
++        // The row starts with two spaces
++        memset(sScreenControl->phrasePrintBuffer, CHAR_SPACE, sizeof(sScreenControl->phrasePrintBuffer));
++        str = &sScreenControl->phrasePrintBuffer[2];
++        for (j = 0; j < numColumns; j++)
++        {
++            if (*currentPhrase != EC_EMPTY_WORD)
++            {
++                str = CopyEasyChatWord(str, *currentPhrase);
++            }
++            else
++            {
++                str = WriteColorChangeControlCode(str, 0, 4);
++                for (k = 0; k < 5; k++)
++                {
++                    *str++ = CHAR_EXTRA_SYMBOL;
++                    *str++ = CHAR_UNDERSCORE;
++                }
++
++                str = WriteColorChangeControlCode(str, 0, 2);
++            }
++            currentPhrase++;
++            *str = CHAR_SPACE;
++            str += 2;
++        }
++
++        *str = EOS;
++        PrintEasyChatText(sScreenControl->windowId, FONT_NORMAL, sScreenControl->phrasePrintBuffer, 0, i * 16 + 2, TEXT_SKIP_DRAW, 0);
++    }
++
++    CopyWindowToVram(sScreenControl->windowId, COPYWIN_FULL);
++}
++#else
+ static void PrintCurrentPhrase(void)
+ {
+     u8 strClear[4];
+@@ -4119,6 +4392,7 @@ static void PrintCurrentPhrase(void)
+ 
+     CopyWindowToVram(sScreenControl->windowId, COPYWIN_FULL);
+ }
++#endif
+ 
+ static void BufferFrameTilemap(u16 *tilemap)
+ {
+@@ -4128,6 +4402,8 @@ static void BufferFrameTilemap(u16 *tilemap)
+ 
+     frameId = GetEasyChatScreenFrameId();
+     CpuFastFill(0, tilemap, BG_SCREEN_SIZE);
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
++    // (The Japanese frames all have their top and bottom edges)
+     if (frameId == FRAMEID_MAIL || frameId == FRAMEID_QUIZ_SET_QUESTION)
+     {
+         // These frames fill the screen, no need to draw top/bottom edges
+@@ -4147,6 +4423,7 @@ static void BufferFrameTilemap(u16 *tilemap)
+         }
+     }
+     else
++#endif
+     {
+         y = sPhraseFrameDimensions[frameId].top - 1;
+         x = sPhraseFrameDimensions[frameId].left - 1;
+@@ -4196,14 +4473,14 @@ static void AdjustBgTilemapForFooter(void)
+     {
+     case FOOTER_ANSWER:
+         tilemap += 0x2A0;
+-        CopyToBgTilemapBufferRect(3, tilemap, 0, 11, 32, 2);
++        CopyToBgTilemapBufferRect(3, tilemap, 0, FOOTER_TILEMAP_TOP, 32, 2);
+         break;
+     case FOOTER_QUIZ:
+         tilemap += 0x300;
+-        CopyToBgTilemapBufferRect(3, tilemap, 0, 11, 32, 2);
++        CopyToBgTilemapBufferRect(3, tilemap, 0, FOOTER_TILEMAP_TOP, 32, 2);
+         break;
+     case NUM_FOOTER_TYPES:
+-        CopyToBgTilemapBufferRect(3, tilemap, 0, 10, 32, 4);
++        CopyToBgTilemapBufferRect(3, tilemap, 0, FOOTER_TILEMAP_TOP - 1, 32, 4);
+         break;
+     }
+ }
+@@ -4252,10 +4529,14 @@ static void PrintKeyboardGroupNames(void)
+     int x, y;
+ 
+     i = 0;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    y = 98;
++#else
+     y = 97;
++#endif
+     while (1)
+     {
+-        for (x = 0; x < 2; x++)
++        for (x = 0; x < NUM_GROUP_NAME_COLUMNS; x++)
+         {
+             u8 groupId = GetUnlockedEasyChatGroupId(i++);
+             if (groupId == EC_NUM_GROUPS)
+@@ -4264,7 +4545,11 @@ static void PrintKeyboardGroupNames(void)
+                 return;
+             }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++            PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, GetEasyChatWordGroupName(groupId), x * 56 + 8, y, TEXT_SKIP_DRAW, NULL);
++#else
+             PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, GetEasyChatWordGroupName(groupId), x * 84 + 10, y, TEXT_SKIP_DRAW, NULL);
++#endif
+         }
+ 
+         y += 16;
+@@ -4276,7 +4561,11 @@ static void PrintKeyboardAlphabet(void)
+     u32 i;
+ 
+     for (i = 0; i < ARRAY_COUNT(sEasyChatKeyboardAlphabet); i++)
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sEasyChatKeyboardAlphabet[i], 8, 98 + i * 16, TEXT_SKIP_DRAW, NULL);
++#else
+         PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sEasyChatKeyboardAlphabet[i], 10, 97 + i * 16, TEXT_SKIP_DRAW, NULL);
++#endif
+ }
+ 
+ static void PrintInitialWordSelectText(void)
+@@ -4337,17 +4626,26 @@ static void PrintWordSelectText(u8 scrollOffset, u8 numRows)
+ 
+     wordIndex = scrollOffset * NUM_WORD_SELECT_COLUMNS;
+     y = (scrollOffset * 16 + 96) & 0xFF;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    y += 2;
++#else
+     y++;
++#endif
+     for (i = 0; i < numRows; i++)
+     {
+-        for (j = 0; j < 2; j++)
++        for (j = 0; j < NUM_WORD_SELECT_COLUMNS; j++)
+         {
+             easyChatWord = GetWordFromSelectedGroup(wordIndex++);
+             if (easyChatWord != EC_EMPTY_WORD)
+             {
+                 CopyEasyChatWordPadded(sScreenControl->wordSelectPrintBuffer, easyChatWord, 0);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++                if (!DummyWordCheck(easyChatWord))
++                    PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sScreenControl->wordSelectPrintBuffer, j * 72 + 16, y, TEXT_SKIP_DRAW, NULL);
++#else
+                 if (!DummyWordCheck(easyChatWord))
+                     PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sScreenControl->wordSelectPrintBuffer, (j * 13 + 3) * 8, y, TEXT_SKIP_DRAW, NULL);
++#endif
+                 else // Never reached
+                     PrintEasyChatTextWithColors(WIN_INPUT_SELECT, FONT_NORMAL, sScreenControl->wordSelectPrintBuffer, (j * 13 + 3) * 8, y, TEXT_SKIP_DRAW, TEXT_COLOR_WHITE, TEXT_COLOR_LIGHT_RED, TEXT_COLOR_LIGHT_GRAY);
+             }
+@@ -4640,7 +4938,11 @@ static void LoadEasyChatGfx(void)
+ static void CreateMainCursorSprite(void)
+ {
+     u8 frameId = GetEasyChatScreenFrameId();
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    int x = sPhraseFrameDimensions[frameId].left * 8 + 12;
++#else
+     int x = sPhraseFrameDimensions[frameId].left * 8 + 13;
++#endif
+     int y = sPhraseFrameDimensions[frameId].top * 8 + 8;
+     u8 spriteId = CreateSprite(&sSpriteTemplate_TriangleCursor, x, y, 2);
+     sScreenControl->mainCursorSprite = &gSprites[spriteId];
+@@ -4680,6 +4982,86 @@ static void StartMainCursorAnim(void)
+     sScreenControl->mainCursorSprite->sAnimateCursor = TRUE;
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// One sprite: the Japanese cursor graphics hold whole rectangles, not mirrored halves
++static void CreateRectangleCursorSprites(void)
++{
++    u8 spriteId = CreateSprite(&sSpriteTemplate_RectangleCursor, 0, 0, 3);
++    sScreenControl->rectangleCursorSpriteRight = &gSprites[spriteId];
++    UpdateRectangleCursorPos();
++}
++
++static void DestroyRectangleCursorSprites(void)
++{
++    DestroySprite(sScreenControl->rectangleCursorSpriteRight);
++    sScreenControl->rectangleCursorSpriteRight = NULL;
++}
++
++static void UpdateRectangleCursorPos(void)
++{
++    s8 column;
++    s8 row;
++
++    if (sScreenControl->rectangleCursorSpriteRight)
++    {
++        GetKeyboardCursorColAndRow(&column, &row);
++        if (!GetInAlphabetMode())
++            SetRectangleCursorPos_GroupMode(column, row);
++        else
++            SetRectangleCursorPos_AlphabetMode(column, row);
++    }
++}
++
++static void SetRectangleCursorPos_GroupMode(s8 column, s8 row)
++{
++    struct Sprite *cursor = sScreenControl->rectangleCursorSpriteRight;
++
++    if (column != -1)
++    {
++        // In group name window
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_GROUP);
++        cursor->x = column * 56 + 40;
++        cursor->y = row * 16 + 96;
++    }
++    else
++    {
++        // In button window
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_BUTTON);
++        cursor->x = 216;
++        cursor->y = row * 16 + 112;
++    }
++}
++
++// The keys are the kana of the keyboard's rows of text, 8 pixels apart, a blank
++// between groups of five: column c is character c + c / 5 of its row
++static void SetRectangleCursorPos_AlphabetMode(s8 column, s8 row)
++{
++    struct Sprite *cursor = sScreenControl->rectangleCursorSpriteRight;
++
++    if (column == -1)
++    {
++        // In button window
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_BUTTON);
++        cursor->x = 216;
++        cursor->y = row * 16 + 112;
++    }
++    else if (column == 10 && row == 1)
++    {
++        // Cursor is on そのた (others)
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_OTHERS);
++        cursor->x = 124;
++        cursor->y = 112;
++    }
++    else
++    {
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_LETTER);
++        cursor->x = (column + column / 5) * 8 + 20;
++        cursor->y = row * 16 + 96;
++        if (column > 12)
++            cursor->x += 8; // わ, after a blank
++    }
++}
++#else
+ static void CreateRectangleCursorSprites(void)
+ {
+     u8 spriteId = CreateSprite(&sSpriteTemplate_RectangleCursor, 0, 0, 3);
+@@ -4786,6 +5168,7 @@ static void SetRectangleCursorPos_AlphabetMode(s8 column, s8 row)
+         sScreenControl->rectangleCursorSpriteLeft->y = row * 16 + 112;
+     }
+ }
++#endif
+ 
+ // Cursor for selecting a new word
+ // Identical in appearance to the 'main' cursor
+@@ -4813,8 +5196,12 @@ static void UpdateWordSelectCursorPos(void)
+     s8 column, row, x, y;
+ 
+     GetWordSelectColAndRow(&column, &row);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    x = column * 72 + 20;
++#else
+     x = column * 13;
+     x = x * 8 + 28;
++#endif
+     y = row * 16 + 96;
+     SetWordSelectCursorPos(x, y);
+ }
+@@ -5009,6 +5396,7 @@ static void HideStartSelectButtons(void)
+ static void TryAddInterviewObjectEvents(void)
+ {
+     int graphicsId;
++    int x, y;
+     u8 spriteId;
+ 
+     switch (GetDisplayedPersonType())
+@@ -5026,11 +5414,31 @@ static void TryAddInterviewObjectEvents(void)
+         return;
+     }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese interview frame leaves room for them too
++    switch (GetEasyChatScreenFrameId())
++    {
++    case FRAMEID_INTERVIEW_SHOW_PERSON:
++        x = 76;
++        y = 40;
++        break;
++    case FRAMEID_INTERVIEW:
++        x = 48;
++        y = 48;
++        break;
++    default:
++        return;
++    }
++#else
+     if (GetEasyChatScreenFrameId() != FRAMEID_INTERVIEW_SHOW_PERSON)
+         return;
+ 
++    x = 76;
++    y = 40;
++#endif
++
+     // Add object for reporter/interviewing fan (facing left)
+-    spriteId = CreateObjectGraphicsSprite(graphicsId, SpriteCallbackDummy, 76, 40, 0);
++    spriteId = CreateObjectGraphicsSprite(graphicsId, SpriteCallbackDummy, x, y, 0);
+     if (spriteId != MAX_SPRITES)
+     {
+         gSprites[spriteId].oam.priority = 0;
+@@ -5041,8 +5449,8 @@ static void TryAddInterviewObjectEvents(void)
+     spriteId = CreateObjectGraphicsSprite(
+         gSaveBlock2Ptr->playerGender == MALE ? OBJ_EVENT_GFX_RIVAL_BRENDAN_NORMAL : OBJ_EVENT_GFX_RIVAL_MAY_NORMAL,
+         SpriteCallbackDummy,
+-        52,
+-        40,
++        x - 24,
++        y,
+         0);
+ 
+     if (spriteId != MAX_SPRITES)
+@@ -5068,6 +5476,7 @@ int GetFooterIndex(void)
+     }
+ }
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static int GetFooterOptionXOffset(int option)
+ {
+     int footerIndex = GetFooterIndex();
+@@ -5107,6 +5516,7 @@ static void AddMainScreenButtonWindow(void)
+ 
+     PutWindowTilemap(windowId);
+ }
++#endif
+ 
+ static bool8 IsEasyChatGroupUnlocked(u8 groupId)
+ {
+@@ -5694,7 +6104,7 @@ static void SetUnlockedWordsByAlphabet(void)
+     u16 numToProcess;
+     int index;
+ 
+-    for (i = 0; i < EC_NUM_ALPHABET_GROUPS; i++)
++    for (i = 0; i < EC_NUM_KEYBOARD_GROUPS; i++)
+     {
+         numWords = gEasyChatWordsByLetterPointers[i].numWords;
+         words = gEasyChatWordsByLetterPointers[i].words;

@@ -1,0 +1,570 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese Union Room chat keyboard
+Applies after 0005-port-hooks.patch; apply with tools/bootstrap.py.
+
+The Japanese ROM's Union Room chat: pages of hiragana, katakana, Latin letters and
+digits (the gText_EmptyTextInput* rows), symbols and the registered texts; R gives
+the last character its next form from the ROM's table (small and voiced kana, the
+other case), with a label for hiragana, katakana or Latin letters. Keys, chat
+lines and the text being typed are in the small font, at the ROM's spacing (11-pixel
+keyboard rows, 12-pixel chat rows, 12 lines), the page menu has six entries, and a
+registered text goes in without a trailing space. tools/localize_japanese.py
+stages the table, the Latin page's title and the chat graphics only into a tree
+with this patch (it looks for UNION_ROOM_CHAT_KANA).
+
+diff --git a/src/union_room_chat.c b/src/union_room_chat.c
+index dfedced..b1d8eb3 100644
+--- a/src/union_room_chat.c
++++ b/src/union_room_chat.c
+@@ -27,10 +27,16 @@
+ #include "constants/rgb.h"
+ #include "constants/songs.h"
+ 
++// UNION_ROOM_CHAT_KANA: the Japanese chat keyboard is hiragana (UPPER), katakana
++// (LOWER), Latin letters and digits (LATIN), the symbols and the registered texts;
++// R gives the last character its next form (sCaseToggleTable, staged from the ROM).
+ enum
+ {
+     UNION_ROOM_KB_PAGE_UPPER,
+     UNION_ROOM_KB_PAGE_LOWER,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    UNION_ROOM_KB_PAGE_LATIN,
++#endif
+     UNION_ROOM_KB_PAGE_EMOJI,
+     UNION_ROOM_KB_PAGE_REGISTER,
+     UNION_ROOM_KB_PAGE_COUNT,
+@@ -331,10 +337,29 @@ static const u8 sKeyboardPageMaxRow[UNION_ROOM_KB_PAGE_COUNT] =
+ {
+     [UNION_ROOM_KB_PAGE_UPPER]    = 9,
+     [UNION_ROOM_KB_PAGE_LOWER]    = 9,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    [UNION_ROOM_KB_PAGE_LATIN]    = 7,
++#endif
+     [UNION_ROOM_KB_PAGE_EMOJI]    = 9,
+     [UNION_ROOM_KB_PAGE_REGISTER] = 9
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The character each one becomes with R (0: none): small and voiced kana, the other
++// case of a letter; staged from the Japanese ROM, codes up to 0xEE
++static const u8 sCaseToggleTable[0xEF] = {0};
++
++// The Latin page's rows (text_input_strings.c), and its menu title
++extern const u8 gText_EmptyTextInput1[];
++extern const u8 gText_EmptyTextInput2[];
++extern const u8 gText_EmptyTextInput3[];
++extern const u8 gText_EmptyTextInput4[];
++extern const u8 gText_EmptyTextInput5[];
++extern const u8 gText_EmptyTextInput6[];
++extern const u8 gText_EmptyTextInput7[];
++extern const u8 gText_EmptyTextInput8[];
++static const u8 sText_Latin[] = _("");
++#else
+ static const u8 sCaseToggleTable[256] = {
+     [CHAR_A] = CHAR_a,
+     [CHAR_B] = CHAR_b,
+@@ -481,6 +506,7 @@ static const u8 sCaseToggleTable[256] = {
+     [CHAR_CURRENCY] = CHAR_CURRENCY,
+     [CHAR_BLACK_TRIANGLE] = CHAR_BLACK_TRIANGLE,
+ };
++#endif
+ 
+ // Excludes UNION_ROOM_KB_PAGE_REGISTER, the text for which is chosen by the player
+ static const u8 *const sUnionRoomKeyboardText[UNION_ROOM_KB_PAGE_COUNT - 1][UNION_ROOM_KB_ROW_COUNT] =
+@@ -511,6 +537,19 @@ static const u8 *const sUnionRoomKeyboardText[UNION_ROOM_KB_PAGE_COUNT - 1][UNIO
+         gText_UnionRoomChatKeyboard_PunctuationLower,
+         gText_UnionRoomChatKeyboard_SymbolsLower
+     },
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    [UNION_ROOM_KB_PAGE_LATIN] =
++    {
++        gText_EmptyTextInput1,
++        gText_EmptyTextInput2,
++        gText_EmptyTextInput3,
++        gText_EmptyTextInput4,
++        gText_EmptyTextInput5,
++        gText_EmptyTextInput6,
++        gText_EmptyTextInput7,
++        gText_EmptyTextInput8
++    },
++#endif
+     [UNION_ROOM_KB_PAGE_EMOJI] =
+     {
+         gText_UnionRoomChatKeyboard_Emoji1,
+@@ -571,7 +610,11 @@ static const struct WindowTemplate sWinTemplates[] = {
+         .tilemapLeft = 8,
+         .tilemapTop = 1,
+         .width = 21,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        .height = 18, // 12 rows of 12 pixels
++#else
+         .height = 19,
++#endif
+         .paletteNum = 15,
+         .baseBlock = 0x0001,
+     },
+@@ -582,14 +625,22 @@ static const struct WindowTemplate sWinTemplates[] = {
+         .width = 15,
+         .height = 2,
+         .paletteNum = 12,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        .baseBlock = 0x0074,
++#else
+         .baseBlock = 0x007a,
++#endif
+     },
+     [WIN_KEYBOARD] = {
+         .bg = 1,
+         .tilemapLeft = 0,
+         .tilemapTop = 2,
+         .width = 6,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        .height = 14, // 10 rows of 11 pixels
++#else
+         .height = 15,
++#endif
+         .paletteNum = 7,
+         .baseBlock = 0x0020,
+     },
+@@ -598,7 +649,11 @@ static const struct WindowTemplate sWinTemplates[] = {
+         .tilemapLeft = 1,
+         .tilemapTop = 2,
+         .width = 7,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        .height = 10, // one more page
++#else
+         .height = 9,
++#endif
+         .paletteNum = 14,
+         .baseBlock = 0x0013,
+     }, DUMMY_WIN_TEMPLATE
+@@ -628,14 +683,26 @@ static const struct SubtaskInfo sDisplaySubtasks[] = {
+     {CHATDISPLAY_FUNC_ASK_CONFIRM_LEADER_LEAVE, Display_AskConfirmLeaderLeave}
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's messages start at the window's top, with 1 pixel between letters
++// (not around the leader's name) and 2 between lines
++#define STDMESSAGE_Y              0
++#define STDMESSAGE_LETTER_SPACING 1
++#define STDMESSAGE_LINE_SPACING   2
++#else
++#define STDMESSAGE_Y              1
++#define STDMESSAGE_LETTER_SPACING 0
++#define STDMESSAGE_LINE_SPACING   0
++#endif
++
+ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+     [STDMESSAGE_QUIT_CHATTING] = {
+         .text = gText_QuitChatting,
+         .boxType = 1,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = FALSE
+     },
+@@ -643,9 +710,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_RegisterTextWhere,
+         .boxType = 1,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = FALSE
+     },
+@@ -653,9 +720,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_RegisterTextHere,
+         .boxType = 1,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = FALSE
+     },
+@@ -663,9 +730,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_InputText,
+         .boxType = 1,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = FALSE
+     },
+@@ -673,9 +740,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_ExitingChat,
+         .boxType = 2,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = FALSE
+     },
+@@ -683,9 +750,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_LeaderLeftEndingChat,
+         .boxType = 2,
+         .x = 0,
+-        .y = 1,
++        .y = STDMESSAGE_Y,
+         .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = TRUE,
+         .useWiderBox = FALSE
+     },
+@@ -693,9 +760,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_RegisteredTextChangedOKToSave,
+         .boxType = 2,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = TRUE
+     },
+@@ -703,9 +770,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_AlreadySavedFile_Chat,
+         .boxType = 2,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = TRUE
+     },
+@@ -713,9 +780,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_SavingDontTurnOff_Chat,
+         .boxType = 2,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = TRUE
+     },
+@@ -723,9 +790,9 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_PlayerSavedGame_Chat,
+         .boxType = 2,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = TRUE,
+         .useWiderBox = TRUE
+     },
+@@ -733,19 +800,24 @@ static const struct MessageWindowInfo sDisplayStdMessages[] = {
+         .text = gText_IfLeaderLeavesChatEnds,
+         .boxType = 2,
+         .x = 0,
+-        .y = 1,
+-        .letterSpacing = 0,
+-        .lineSpacing = 0,
++        .y = STDMESSAGE_Y,
++        .letterSpacing = STDMESSAGE_LETTER_SPACING,
++        .lineSpacing = STDMESSAGE_LINE_SPACING,
+         .hasPlaceholders = FALSE,
+         .useWiderBox = TRUE
+     }
+ };
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static const u8 sText_Ellipsis[] = _("…");
++#endif
+ 
+ static const struct MenuAction sKeyboardPageTitleTexts[UNION_ROOM_KB_PAGE_COUNT + 1] = {
+     [UNION_ROOM_KB_PAGE_UPPER]    = {gText_Upper, {NULL}},
+     [UNION_ROOM_KB_PAGE_LOWER]    = {gText_Lower, {NULL}},
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    [UNION_ROOM_KB_PAGE_LATIN]    = {sText_Latin, {NULL}},
++#endif
+     [UNION_ROOM_KB_PAGE_EMOJI]    = {gText_Symbols, {NULL}},
+     [UNION_ROOM_KB_PAGE_REGISTER] = {gText_Register2, {NULL}},
+     [UNION_ROOM_KB_PAGE_COUNT]    = {gText_Exit2, {NULL}},
+@@ -1665,7 +1737,9 @@ static void AppendTextToMessage(void)
+     const u8 *charsStr;
+     int strLength;
+     u8 *str;
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+     u8 buffer[21];
++#endif
+ 
+     if (sChat->currentPage != UNION_ROOM_KB_PAGE_REGISTER)
+     {
+@@ -1683,11 +1757,17 @@ static void AppendTextToMessage(void)
+     else
+     {
+         // Going to append registered text string
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // without a space after it
++        charsStr = sChat->registeredTexts[sChat->currentRow];
++        strLength = StringLength_Multibyte(charsStr);
++#else
+         u8 *tempStr = StringCopy(buffer, sChat->registeredTexts[sChat->currentRow]);
+         tempStr[0] = CHAR_SPACE;
+         tempStr[1] = EOS;
+         charsStr = buffer;
+         strLength = StringLength_Multibyte(buffer);
++#endif
+     }
+ 
+     sChat->lastBufferCursorPos = sChat->bufferCursorPos;
+@@ -1732,7 +1812,11 @@ static void SwitchCaseOfLastMessageCharacter(void)
+ 
+     sChat->lastBufferCursorPos = sChat->bufferCursorPos - 1;
+     str = GetLastCharOfMessagePtr();
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (*str != CHAR_EXTRA_SYMBOL && *str < ARRAY_COUNT(sCaseToggleTable))
++#else
+     if (*str != CHAR_EXTRA_SYMBOL)
++#endif
+     {
+         character = sCaseToggleTable[*str];
+         if (character)
+@@ -1883,10 +1967,15 @@ static bool32 ProcessReceivedChatMessage(u8 *dest, u8 *recvMessage)
+         }
+         break;
+     case CHAT_MESSAGE_CHAT:
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // The name padded to 5 characters, then the colon
++        tempStr = StringCopyPadded(dest, name, CHAR_SPACE, 5);
++#else
+         tempStr = StringCopy(dest, name);
+         *(tempStr++) = EXT_CTRL_CODE_BEGIN;
+         *(tempStr++) = EXT_CTRL_CODE_CLEAR_TO;
+         *(tempStr++) = 42;
++#endif
+         *(tempStr++) = CHAR_COLON;
+         StringCopy(tempStr, recvMessage);
+         return TRUE;
+@@ -1993,6 +2082,21 @@ static int GetTextEntryCursorPosition(void)
+     return sChat->bufferCursorPos;
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The R button's label: 0 for a hiragana, 1 a katakana, 2 a Latin letter, 3 none
++static int GetShouldShowCaseToggleIcon(void)
++{
++    u8 character = *GetLastCharOfMessagePtr();
++
++    if (character >= 0x01 && character <= 0x50)
++        return 0;
++    if (character >= 0x51 && character <= 0xA0)
++        return 1;
++    if (character >= CHAR_A && character <= CHAR_z)
++        return 2;
++    return 3;
++}
++#else
+ static int GetShouldShowCaseToggleIcon(void)
+ {
+     u8 *str = GetLastCharOfMessagePtr();
+@@ -2002,6 +2106,7 @@ static int GetShouldShowCaseToggleIcon(void)
+     else
+         return 0; // Show
+ }
++#endif
+ 
+ static u8 *GetChatHostName(void)
+ {
+@@ -2542,7 +2647,11 @@ static bool32 Display_ScrollChat(u8 *state)
+         if (IsDma3ManagerBusyWithBgCopy())
+             return TRUE;
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        if (sDisplay->currLine < 11)
++#else
+         if (sDisplay->currLine < 9)
++#endif
+         {
+             sDisplay->currLine++;
+             *state = 4;
+@@ -2555,7 +2664,11 @@ static bool32 Display_ScrollChat(u8 *state)
+         }
+         // fall through
+     case 2:
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        ScrollWindow(WIN_CHAT_HISTORY, 0, 4, PIXEL_FILL(1));
++#else
+         ScrollWindow(WIN_CHAT_HISTORY, 0, 5, PIXEL_FILL(1));
++#endif
+         CopyWindowToVram(WIN_CHAT_HISTORY, COPYWIN_GFX);
+         sDisplay->scrollCount++;
+         (*state)++;
+@@ -2747,16 +2860,27 @@ static void AddYesNoMenuAt(u8 left, u8 top, u8 initialCursorPos)
+     template.width = 6;
+     template.height = 4;
+     template.paletteNum = 14;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    template.baseBlock = 0x59; // after the taller page menu
++#else
+     template.baseBlock = 0x52;
++#endif
+     sDisplay->yesNoMenuWindowId = AddWindow(&template);
+     if (sDisplay->yesNoMenuWindowId != WINDOW_NONE)
+     {
+         FillWindowPixelBuffer(sDisplay->yesNoMenuWindowId, PIXEL_FILL(1));
+         PutWindowTilemap(sDisplay->yesNoMenuWindowId);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        AddTextPrinterParameterized(sDisplay->yesNoMenuWindowId, FONT_NORMAL, gText_Yes, 10, 2, TEXT_SKIP_DRAW, NULL);
++        AddTextPrinterParameterized(sDisplay->yesNoMenuWindowId, FONT_NORMAL, gText_No, 10, 16, TEXT_SKIP_DRAW, NULL);
++        DrawTextBorderOuter(sDisplay->yesNoMenuWindowId, 1, 13);
++        InitMenuNormal(sDisplay->yesNoMenuWindowId, FONT_NORMAL, 0, 2, 14, 2, initialCursorPos);
++#else
+         AddTextPrinterParameterized(sDisplay->yesNoMenuWindowId, FONT_NORMAL, gText_Yes, 8, 1, TEXT_SKIP_DRAW, NULL);
+         AddTextPrinterParameterized(sDisplay->yesNoMenuWindowId, FONT_NORMAL, gText_No, 8, 17, TEXT_SKIP_DRAW, NULL);
+         DrawTextBorderOuter(sDisplay->yesNoMenuWindowId, 1, 13);
+         InitMenuInUpperLeftCornerNormal(sDisplay->yesNoMenuWindowId, 2, initialCursorPos);
++#endif
+     }
+ }
+ 
+@@ -2794,7 +2918,11 @@ static void AddStdMessageWindow(int msgId, u16 bg0vofs)
+     template.width = 21;
+     template.height = 4;
+     template.paletteNum = 14;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    template.baseBlock = 0x71; // after the taller page menu
++#else
+     template.baseBlock = 0x6A;
++#endif
+     if (sDisplayStdMessages[msgId].useWiderBox)
+     {
+         template.tilemapLeft -= 7;
+@@ -2876,6 +3004,47 @@ static void FillTextEntryWindow(u16 x, u16 width, u8 fillValue)
+     FillWindowPixelRect(WIN_TEXT_ENTRY, fillValue, x * 8, 1, width * 8, 14);
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The small font's 8-pixel cells, filled in the background colour
++static void DrawTextEntryMessage(u16 x, u8 *str, u8 bgColor, u8 fgColor, u8 shadowColor)
++{
++    u8 color[3];
++
++    color[0] = bgColor;
++    color[1] = fgColor;
++    color[2] = shadowColor;
++    AddTextPrinterParameterized3(WIN_TEXT_ENTRY, FONT_SMALL, x * 8, 1, color, TEXT_SKIP_DRAW, str);
++}
++
++// 10 rows of 11 pixels in the small font; the registered texts' first 5 characters
++static void PrintCurrentKeyboardPage(void)
++{
++    u8 page;
++    int i;
++    u16 top;
++    u8 color[3];
++
++    FillWindowPixelBuffer(WIN_KEYBOARD, PIXEL_FILL(15));
++    page = GetCurrentKeyboardPage();
++    color[0] = TEXT_COLOR_TRANSPARENT;
++    color[1] = TEXT_DYNAMIC_COLOR_5;
++    color[2] = TEXT_DYNAMIC_COLOR_4;
++    for (i = 0, top = 0; i < UNION_ROOM_KB_ROW_COUNT; i++, top += 11)
++    {
++        if (page != UNION_ROOM_KB_PAGE_REGISTER)
++        {
++            if (!sUnionRoomKeyboardText[page][i])
++                return;
++            AddTextPrinterParameterized3(WIN_KEYBOARD, FONT_SMALL, 6, top, color, TEXT_SKIP_DRAW, sUnionRoomKeyboardText[page][i]);
++        }
++        else
++        {
++            StringCopyN_Multibyte(sDisplay->expandedPlaceholdersBuffer, GetRegisteredTextByRow(i), 5);
++            AddTextPrinterParameterized3(WIN_KEYBOARD, FONT_SMALL, 6, top, color, TEXT_SKIP_DRAW, sDisplay->expandedPlaceholdersBuffer);
++        }
++    }
++}
++#else
+ static void DrawTextEntryMessage(u16 x, u8 *str, u8 bgColor, u8 fgColor, u8 shadowColor)
+ {
+     u8 color[3];
+@@ -2953,6 +3122,7 @@ static void PrintCurrentKeyboardPage(void)
+         }
+     }
+ }
++#endif
+ 
+ #define KEYBOARD_HOFS_END 56
+ 
+@@ -3000,8 +3170,13 @@ static void ShowKeyboardSwapMenu(void)
+ {
+     FillWindowPixelBuffer(WIN_SWAP_MENU, PIXEL_FILL(1));
+     DrawTextBorderOuter(WIN_SWAP_MENU, 1, 13);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    PrintMenuActionTextsAtPos(WIN_SWAP_MENU, FONT_NORMAL, GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_WIDTH), 2, 13, ARRAY_COUNT(sKeyboardPageTitleTexts), sKeyboardPageTitleTexts);
++    InitMenuNormal(WIN_SWAP_MENU, FONT_NORMAL, 0, 0, 13, ARRAY_COUNT(sKeyboardPageTitleTexts), GetCurrentKeyboardPage());
++#else
+     PrintMenuActionTextsAtPos(WIN_SWAP_MENU, FONT_SHORT, 8, 1, 14, ARRAY_COUNT(sKeyboardPageTitleTexts), sKeyboardPageTitleTexts);
+     InitMenuNormal(WIN_SWAP_MENU, FONT_SHORT, 0, 1, 14, 5, GetCurrentKeyboardPage());
++#endif
+     PutWindowTilemap(WIN_SWAP_MENU);
+ }
+ 
+@@ -3018,8 +3193,14 @@ static void PrintChatMessage(u16 row, u8 *str, u8 colorIdx)
+     color[0] = TEXT_COLOR_WHITE;
+     color[1] = colorIdx * 2 + 2;
+     color[2] = colorIdx * 2 + 3;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // Rows of 12 pixels in the small font
++    FillWindowPixelRect(WIN_CHAT_HISTORY, PIXEL_FILL(1), 0, row * 12, 168, 12);
++    AddTextPrinterParameterized3(WIN_CHAT_HISTORY, FONT_SMALL, 0, row * 12, color, TEXT_SKIP_DRAW, str);
++#else
+     FillWindowPixelRect(WIN_CHAT_HISTORY, PIXEL_FILL(1), 0, row * 15, 168, 15);
+     AddTextPrinterParameterized3(WIN_CHAT_HISTORY, FONT_SHORT, 0, row * 15 + 1, color, TEXT_SKIP_DRAW, str);
++#endif
+ }
+ 
+ static void ResetGpuBgState(void)
+@@ -3202,13 +3383,21 @@ static void MoveKeyboardCursor(void)
+     {
+         StartSpriteAnim(sSprites->keyboardCursor, 0);
+         sSprites->keyboardCursor->x = x * 8 + 10;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        sSprites->keyboardCursor->y = y * 11 + 24;
++#else
+         sSprites->keyboardCursor->y = y * 12 + 24;
++#endif
+     }
+     else
+     {
+         StartSpriteAnim(sSprites->keyboardCursor, 2);
+         sSprites->keyboardCursor->x = 24;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        sSprites->keyboardCursor->y = y * 11 + 24;
++#else
+         sSprites->keyboardCursor->y = y * 12 + 24;
++#endif
+     }
+ }
+ 

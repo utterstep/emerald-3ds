@@ -1,0 +1,600 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese naming screen keyboard
+Applies after 0064-japanese-walda-phrase.patch; apply with tools/bootstrap.py.
+
+The Japanese ROM's naming screen: hiragana, katakana and a Latin page of 19 keys a row,
+whose characters are the keys' text (staged as the gText_NamingScreenKeyboard_* rows);
+the player's name and Walda's phrase start on hiragana, Pokémon and box names on
+katakana. The dakuten and handakuten keys and R (the next form of the last character,
+from two tables staged into this file) change the last character. Characters are 10
+pixels apart, with the ROM's positions for the cursor, text, underscores, titles,
+gender sign and controls; the kana page labels are two tiles. Walda's phrase takes 12
+characters. tools/localize_japanese.py stages the keyboard graphics only into a tree
+with this patch (it looks for NAMING_SCREEN_KANA).
+
+diff --git a/src/naming_screen.c b/src/naming_screen.c
+index 89e7ca3..eb5a9b5 100644
+--- a/src/naming_screen.c
++++ b/src/naming_screen.c
+@@ -44,7 +44,17 @@ enum {
+ };
+ 
+ #define KBROW_COUNT 4
+-#if defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_FRENCH
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// NAMING_SCREEN_KANA: the Japanese keyboard is a grid of 19 keys a row, 8 pixels apart,
++// on every page. Its "lower" keyboard is katakana, its "upper" one hiragana, and the
++// symbols one holds the Latin letters, digits and symbols. A key inserts the character
++// its row of text shows in its column (sNamingScreenKeyboardText, staged from the
++// Japanese ROM); on the kana pages the second row's text goes on past its end with the
++// codes of the dakuten and handakuten keys (KEY_DAKUTEN, KEY_HANDAKUTEN).
++#define KBCOL_COUNT 19
++#define KEY_DAKUTEN    EOS
++#define KEY_HANDAKUTEN CHAR_NEWLINE
++#elif defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_FRENCH
+ #define KBCOL_COUNT 9
+ #else
+ #define KBCOL_COUNT 8
+@@ -211,6 +221,14 @@ static const u8 *const sTransferredToPCMessages[] =
+ 
+ static const u8 sText_AlphabetUpperLower[] = _("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!");
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The R button turns the last character into its next form (a small or a voiced kana,
++// the other case of a letter, the next digit): sCharCycleFrom[i] becomes sCharCycleTo[i].
++// Both tables are staged from the Japanese ROM.
++static const u8 sCharCycleFrom[] = _("");
++static const u8 sCharCycleTo[] = _("");
++#endif
++
+ static const struct BgTemplate sBgTemplates[] =
+ {
+     {
+@@ -289,6 +307,7 @@ static const struct WindowTemplate sWindowTemplates[WIN_COUNT + 1] =
+     DUMMY_WIN_TEMPLATE
+ };
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ // This handles what characters get inserted when a key is pressed
+ // The keys shown on the keyboard are handled separately by sNamingScreenKeyboardText
+ static const u8 sKeyboardChars[KBPAGE_COUNT][KBROW_COUNT][KBCOL_COUNT] = {
+@@ -311,7 +330,15 @@ static const u8 sKeyboardChars[KBPAGE_COUNT][KBROW_COUNT][KBCOL_COUNT] = {
+         __("…“”‘'   "),
+     }
+ };
++#endif
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++static const u8 sPageColumnCounts[KBPAGE_COUNT] = {
++    [KEYBOARD_LETTERS_LOWER] = KBCOL_COUNT,
++    [KEYBOARD_LETTERS_UPPER] = KBCOL_COUNT,
++    [KEYBOARD_SYMBOLS]       = KBCOL_COUNT
++};
++#else
+ static const u8 sPageColumnCounts[KBPAGE_COUNT] = {
+     [KEYBOARD_LETTERS_LOWER] = KBCOL_COUNT,
+     [KEYBOARD_LETTERS_UPPER] = KBCOL_COUNT,
+@@ -322,6 +349,7 @@ static const u8 sPageColumnXPos[KBPAGE_COUNT][KBCOL_COUNT] = {
+     [KEYBOARD_LETTERS_UPPER] = {0, 12, 24, 56, 68, 80, 92, 123},
+     [KEYBOARD_SYMBOLS]       = {0, 22, 44, 66, 88, 110}
+ };
++#endif
+ 
+ static const struct NamingScreenTemplate *const sNamingScreenTemplates[];
+ static const struct SubspriteTable sSubspriteTable_PageSwapFrame[];
+@@ -388,6 +416,9 @@ static void DrawTextEntryBox(void);
+ static u8 GetTextEntryPosition(void);
+ static void DeleteTextCharacter(void);
+ static bool8 AddTextCharacter(void);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++static void CycleLastCharacter(void);
++#endif
+ static void BufferCharacter(u8);
+ static void SaveInputText(void);
+ static void LoadGfx(void);
+@@ -487,9 +518,16 @@ static void NamingScreen_Init(void)
+     sNamingScreen->bgToHide = 1;
+     sNamingScreen->template = sNamingScreenTemplates[sNamingScreen->templateNum];
+     sNamingScreen->currentPage = sNamingScreen->template->initialPage;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // In tiles: where the input arrow and the underscores go
++    sNamingScreen->inputCharBaseXPos = 14 - sNamingScreen->template->maxChars / 2;
++    if (sNamingScreen->templateNum == NAMING_SCREEN_WALDA)
++        sNamingScreen->inputCharBaseXPos++;
++#else
+     sNamingScreen->inputCharBaseXPos = (DISPLAY_WIDTH - sNamingScreen->template->maxChars * 8) / 2 + 6;
+     if (sNamingScreen->templateNum == NAMING_SCREEN_WALDA)
+         sNamingScreen->inputCharBaseXPos += 11;
++#endif
+     sNamingScreen->keyRepeatStartDelayCopy = gKeyRepeatStartDelay;
+     memset(sNamingScreen->textBuffer, EOS, sizeof(sNamingScreen->textBuffer));
+     if (sNamingScreen->template->copyExistingString)
+@@ -616,24 +654,73 @@ static const u8 sPageToKeyboardId[KBPAGE_COUNT] =
+     [KBPAGE_LETTERS_LOWER] = KEYBOARD_LETTERS_LOWER
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The player's name and Walda's phrase start on hiragana (the order above). Pokémon
++// and box names start on katakana, then hiragana, then the Latin page; these are
++// indexed by page, the first one 0.
++static const u8 sKatakanaFirst_PageToNextGfxId[KBPAGE_COUNT] = {PAGE_SWAP_UPPER, PAGE_SWAP_OTHERS, PAGE_SWAP_LOWER};
++static const u8 sKatakanaFirst_PageToNextKeyboardId[KBPAGE_COUNT] = {KEYBOARD_LETTERS_UPPER, KEYBOARD_SYMBOLS, KEYBOARD_LETTERS_LOWER};
++static const u8 sKatakanaFirst_PageToKeyboardId[KBPAGE_COUNT] = {KEYBOARD_LETTERS_LOWER, KEYBOARD_LETTERS_UPPER, KEYBOARD_SYMBOLS};
++
++static bool8 IsKatakanaFirst(void)
++{
++    return sNamingScreen->templateNum != NAMING_SCREEN_PLAYER && sNamingScreen->templateNum != NAMING_SCREEN_WALDA;
++}
++#endif
++
+ static u8 PageToNextGfxId(u8 page)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (IsKatakanaFirst())
++        return sKatakanaFirst_PageToNextGfxId[page];
++#endif
+     return sPageToNextGfxId[page];
+ }
+ 
+ static u8 CurrentPageToNextKeyboardId(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (IsKatakanaFirst())
++        return sKatakanaFirst_PageToNextKeyboardId[sNamingScreen->currentPage];
++#endif
+     return sPageToNextKeyboardId[sNamingScreen->currentPage];
+ }
+ 
+ static u8 CurrentPageToKeyboardId(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (IsKatakanaFirst())
++        return sKatakanaFirst_PageToKeyboardId[sNamingScreen->currentPage];
++#endif
+     return sPageToKeyboardId[sNamingScreen->currentPage];
+ }
+ 
+ static bool8 MainState_FadeIn(void)
+ {
+     DrawBgTilemap(3, gNamingScreenBackground_Tilemap);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (IsKatakanaFirst())
++    {
++        // Katakana in front, hiragana on deck
++        sNamingScreen->currentPage = 0;
++        DrawBgTilemap(1, gNamingScreenKeyboardLower_Tilemap);
++        DrawBgTilemap(2, gNamingScreenKeyboardUpper_Tilemap);
++        PrintKeyboardKeys(sNamingScreen->windows[WIN_KB_PAGE_1], KEYBOARD_LETTERS_LOWER);
++        PrintKeyboardKeys(sNamingScreen->windows[WIN_KB_PAGE_2], KEYBOARD_LETTERS_UPPER);
++        NamingScreen_Dummy(1, KEYBOARD_LETTERS_LOWER);
++        NamingScreen_Dummy(2, KEYBOARD_LETTERS_UPPER);
++    }
++    else
++    {
++        sNamingScreen->currentPage = KBPAGE_LETTERS_UPPER;
++        DrawBgTilemap(2, gNamingScreenKeyboardLower_Tilemap);
++        DrawBgTilemap(1, gNamingScreenKeyboardUpper_Tilemap);
++        PrintKeyboardKeys(sNamingScreen->windows[WIN_KB_PAGE_2], KEYBOARD_LETTERS_LOWER);
++        PrintKeyboardKeys(sNamingScreen->windows[WIN_KB_PAGE_1], KEYBOARD_LETTERS_UPPER);
++        NamingScreen_Dummy(2, KEYBOARD_LETTERS_LOWER);
++        NamingScreen_Dummy(1, KEYBOARD_LETTERS_UPPER);
++    }
++#else
+     sNamingScreen->currentPage = KBPAGE_LETTERS_UPPER;
+     DrawBgTilemap(2, gNamingScreenKeyboardLower_Tilemap);
+     DrawBgTilemap(1, gNamingScreenKeyboardUpper_Tilemap);
+@@ -641,6 +728,7 @@ static bool8 MainState_FadeIn(void)
+     PrintKeyboardKeys(sNamingScreen->windows[WIN_KB_PAGE_1], KEYBOARD_LETTERS_UPPER);
+     NamingScreen_Dummy(2, KEYBOARD_LETTERS_LOWER);
+     NamingScreen_Dummy(1, KEYBOARD_LETTERS_UPPER);
++#endif
+     DrawTextEntry();
+     DrawTextEntryBox();
+     PrintControls();
+@@ -1139,7 +1227,11 @@ static void CreateSprites(void)
+ 
+ static void CreateCursorSprite(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    sNamingScreen->cursorSpriteId = CreateSprite(&sSpriteTemplate_Cursor, 27, 87, 1);
++#else
+     sNamingScreen->cursorSpriteId = CreateSprite(&sSpriteTemplate_Cursor, 38, 88, 1);
++#endif
+     SetCursorInvisibility(TRUE);
+     gSprites[sNamingScreen->cursorSpriteId].oam.priority = 1;
+     gSprites[sNamingScreen->cursorSpriteId].oam.objMode = ST_OAM_OBJ_BLEND;
+@@ -1152,12 +1244,18 @@ static void SetCursorPos(s16 x, s16 y)
+ {
+     struct Sprite *cursorSprite = &gSprites[sNamingScreen->cursorSpriteId];
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // On the button column the cursor is hidden (SpriteCB_Cursor)
++    cursorSprite->x = x * 8 + 27;
++    cursorSprite->y = y * 16 + 87;
++#else
+     if (x < sPageColumnCounts[CurrentPageToKeyboardId()])
+         cursorSprite->x = sPageColumnXPos[CurrentPageToKeyboardId()][x] + 38;
+     else
+         cursorSprite->x = 0;
+ 
+     cursorSprite->y = y * 16 + 88;
++#endif
+     cursorSprite->sPrevX = cursorSprite->sX;
+     cursorSprite->sPrevY = cursorSprite->sY;
+     cursorSprite->sX = x;
+@@ -1371,12 +1469,22 @@ static void CreateTextEntrySprites(void)
+     s16 xPos;
+     u8 i;
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // inputCharBaseXPos is in tiles, and the characters are 10 pixels apart
++    xPos = (sNamingScreen->inputCharBaseXPos - 1) * 8 + 4;
++#else
+     xPos = sNamingScreen->inputCharBaseXPos - 5;
++#endif
+     spriteId = CreateSprite(&sSpriteTemplate_InputArrow, xPos, 56, 0);
+     gSprites[spriteId].oam.priority = 3;
+     gSprites[spriteId].invisible = TRUE;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    xPos = sNamingScreen->inputCharBaseXPos * 8 + 4;
++    for (i = 0; i < sNamingScreen->template->maxChars; i++, xPos += 10)
++#else
+     xPos = sNamingScreen->inputCharBaseXPos;
+     for (i = 0; i < sNamingScreen->template->maxChars; i++, xPos += 8)
++#endif
+     {
+         spriteId = CreateSprite(&sSpriteTemplate_Underscore, xPos + 3, 60, 0);
+         gSprites[spriteId].oam.priority = 3;
+@@ -1483,6 +1591,13 @@ static bool8 HandleKeyboardEvent(void)
+         DeleteTextCharacter();
+         return FALSE;
+     }
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    else if (input == INPUT_LR_BUTTON)
++    {
++        CycleLastCharacter();
++        return FALSE;
++    }
++#endif
+     else if (input == INPUT_START)
+     {
+         MoveCursorToOKButton();
+@@ -1611,6 +1726,10 @@ static void Input_Enabled(struct Task *task)
+         task->tKeyboardEvent = INPUT_SELECT;
+     else if (JOY_NEW(START_BUTTON))
+         task->tKeyboardEvent = INPUT_START;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    else if (JOY_NEW(R_BUTTON))
++        task->tKeyboardEvent = INPUT_LR_BUTTON;
++#endif
+     else
+         HandleDpadMovement(task);
+ }
+@@ -1618,6 +1737,11 @@ static void Input_Enabled(struct Task *task)
+ static void Input_Override(struct Task *task)
+ {
+     task->tKeyboardEvent = INPUT_NONE;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // R still changes the last character while the cursor moves to OK
++    if (JOY_NEW(R_BUTTON))
++        task->tKeyboardEvent = INPUT_LR_BUTTON;
++#endif
+ }
+ 
+ static void HandleDpadMovement(struct Task *task)
+@@ -1725,7 +1849,11 @@ static void HandleDpadMovement(struct Task *task)
+ static void DrawNormalTextEntryBox(void)
+ {
+     FillWindowPixelBuffer(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX], PIXEL_FILL(1));
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    AddTextPrinterParameterized(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX], FONT_NORMAL, sNamingScreen->template->title, 5, 1, 0, 0);
++#else
+     AddTextPrinterParameterized(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX], FONT_NORMAL, sNamingScreen->template->title, 8, 1, 0, 0);
++#endif
+     PutWindowTilemap(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX]);
+ }
+ 
+@@ -1736,7 +1864,11 @@ static void DrawMonTextEntryBox(void)
+     StringCopy(buffer, gSpeciesNames[sNamingScreen->monSpecies]);
+     StringAppendN(buffer, sNamingScreen->template->title, 15);
+     FillWindowPixelBuffer(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX], PIXEL_FILL(1));
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    AddTextPrinterParameterized(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX], FONT_NORMAL, buffer, 9, 1, 0, 0);
++#else
+     AddTextPrinterParameterized(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX], FONT_NORMAL, buffer, 8, 1, 0, 0);
++#endif
+     PutWindowTilemap(sNamingScreen->windows[WIN_TEXT_ENTRY_BOX]);
+ }
+ 
+@@ -1792,13 +1924,22 @@ static void DrawGenderIcon(void)
+             StringCopy(text, gText_FemaleSymbol);
+             isFemale = TRUE;
+         }
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // Past the fifth character's 10-pixel cell (DrawTextEntry)
++        AddTextPrinterParameterized3(sNamingScreen->windows[WIN_TEXT_ENTRY], FONT_NORMAL, 91, 1, sGenderColors[isFemale], TEXT_SKIP_DRAW, text);
++#else
+         AddTextPrinterParameterized3(sNamingScreen->windows[WIN_TEXT_ENTRY], FONT_NORMAL, (POKEMON_NAME_ENTRY_LENGTH * 4) + 64, 1, sGenderColors[isFemale], TEXT_SKIP_DRAW, text);
++#endif
+     }
+ }
+ 
+ static u8 GetCharAtKeyboardPos(s16 x, s16 y)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    return sNamingScreenKeyboardText[CurrentPageToKeyboardId()][y][x];
++#else
+     return sKeyboardChars[CurrentPageToKeyboardId()][y][x];
++#endif
+ }
+ 
+ 
+@@ -1845,18 +1986,120 @@ static void DeleteTextCharacter(void)
+     PlaySE(SE_BALL);
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// Codes of the Japanese character set (charmap.txt): か-と, は-ほ and their katakana
++// take a dakuten, は-ほ, ば-ぼ and their katakana a handakuten; ぱ-ぽ lose theirs for a
++// dakuten and ば-ぼ theirs for a handakuten.
++static bool8 CanTakeDakuten(u8 ch)
++{
++    return (ch >= 0x06 && ch <= 0x14)  // か-と
++        || (ch >= 0x1A && ch <= 0x1E)  // は-ほ
++        || (ch >= 0x4B && ch <= 0x4F)  // ぱ-ぽ
++        || (ch >= 0x56 && ch <= 0x64)  // カ-ト
++        || (ch >= 0x6A && ch <= 0x6E)  // ハ-ホ
++        || (ch >= 0x9B && ch <= 0x9F); // パ-ポ
++}
++
++static bool8 CanTakeHandakuten(u8 ch)
++{
++    return (ch >= 0x1A && ch <= 0x1E)  // は-ほ
++        || (ch >= 0x46 && ch <= 0x4A)  // ば-ぼ
++        || (ch >= 0x6A && ch <= 0x6E)  // ハ-ホ
++        || (ch >= 0x96 && ch <= 0x9A); // バ-ボ
++}
++
++static u8 WithDakuten(u8 ch)
++{
++    if ((ch >= 0x06 && ch <= 0x14) || (ch >= 0x56 && ch <= 0x64))
++        return ch + 0x31; // が-ど, ガ-ド
++    if ((ch >= 0x1A && ch <= 0x1E) || (ch >= 0x6A && ch <= 0x6E))
++        return ch + 0x2C; // ば-ぼ, バ-ボ
++    if ((ch >= 0x4B && ch <= 0x4F) || (ch >= 0x9B && ch <= 0x9F))
++        return ch - 5;    // ば-ぼ, バ-ボ
++    return ch;
++}
++
++static u8 WithHandakuten(u8 ch)
++{
++    if ((ch >= 0x1A && ch <= 0x1E) || (ch >= 0x6A && ch <= 0x6E))
++        return ch + 0x31; // ぱ-ぽ, パ-ポ
++    if ((ch >= 0x46 && ch <= 0x4A) || (ch >= 0x96 && ch <= 0x9A))
++        return ch + 5;    // ぱ-ぽ, パ-ポ
++    return ch;
++}
++
++// The dakuten and handakuten keys change the last character; FALSE if it has no such form
++static bool8 AddDakuten(void)
++{
++    u8 index = GetPreviousTextCaretPosition();
++    u8 ch = sNamingScreen->textBuffer[index];
++
++    if (!CanTakeDakuten(ch))
++        return FALSE;
++    sNamingScreen->textBuffer[index] = WithDakuten(ch);
++    return TRUE;
++}
++
++static bool8 AddHandakuten(void)
++{
++    u8 index = GetPreviousTextCaretPosition();
++    u8 ch = sNamingScreen->textBuffer[index];
++
++    if (!CanTakeHandakuten(ch))
++        return FALSE;
++    sNamingScreen->textBuffer[index] = WithHandakuten(ch);
++    return TRUE;
++}
++
++static void CycleLastCharacter(void)
++{
++    u8 i;
++    u8 index = GetPreviousTextCaretPosition();
++    u8 ch = sNamingScreen->textBuffer[index];
++
++    for (i = 0; sCharCycleFrom[i] != EOS; i++)
++    {
++        if (ch == sCharCycleFrom[i])
++        {
++            sNamingScreen->textBuffer[index] = sCharCycleTo[i];
++            break;
++        }
++    }
++    DrawTextEntry();
++    CopyBgTilemapBufferToVram(3);
++    PlaySE(SE_SELECT);
++}
++#endif
++
+ // Returns TRUE if the text entry is now full
+ static bool8 AddTextCharacter(void)
+ {
+     s16 x;
+     s16 y;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    bool8 added = TRUE;
++    u8 ch;
+ 
++    GetCursorPos(&x, &y);
++    ch = GetCharAtKeyboardPos(x, y);
++    if (ch == KEY_DAKUTEN)
++        added = AddDakuten();
++    else if (ch == KEY_HANDAKUTEN)
++        added = AddHandakuten();
++    else
++        BufferCharacter(ch);
++#else
+     GetCursorPos(&x, &y);
+     BufferCharacter(GetCharAtKeyboardPos(x, y));
++#endif
+     DrawTextEntry();
+     CopyBgTilemapBufferToVram(3);
+     PlaySE(SE_SELECT);
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (!added)
++        return FALSE;
++#endif
+     if (GetPreviousTextCaretPosition() != sNamingScreen->template->maxChars - 1)
+         return FALSE;
+     else
+@@ -1913,7 +2156,20 @@ static void DrawBgTilemap(u8 bg, const void *src)
+ 
+ static void NamingScreen_Dummy(u8 bg, u8 page)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The kana pages' space key (the end of the first row) and dakuten and handakuten
++    // keys (the end of the second) are tiles of the keyboard graphics, drawn over the
++    // keys' text window in the palette of the page's keyboard tilemap.
++    if (page != KEYBOARD_SYMBOLS)
++    {
++        u8 palette = (page == KEYBOARD_LETTERS_UPPER) ? 1 : 2;
+ 
++        FillBgTilemapBufferRect(bg, 0x20, 19, 12, 1, 1, palette);
++        FillBgTilemapBufferRect(bg, 0x21, 20, 12, 1, 1, palette);
++        FillBgTilemapBufferRect(bg, 0x1E, 20, 10, 1, 1, palette);
++        FillBgTilemapBufferRect(bg, 0x1F, 20, 11, 1, 1, palette);
++    }
++#endif
+ }
+ 
+ static void DrawTextEntry(void)
+@@ -1922,7 +2178,9 @@ static void DrawTextEntry(void)
+     u8 temp[2];
+     u16 extraWidth;
+     u8 maxChars = sNamingScreen->template->maxChars;
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+     u16 x = sNamingScreen->inputCharBaseXPos - 0x40;
++#endif
+ 
+     FillWindowPixelBuffer(sNamingScreen->windows[WIN_TEXT_ENTRY], PIXEL_FILL(1));
+ 
+@@ -1932,7 +2190,12 @@ static void DrawTextEntry(void)
+         temp[1] = gText_ExpandedPlaceholder_Empty[0];
+         extraWidth = (IsWideLetter(temp[0]) == TRUE) ? 2 : 0;
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // 10 pixels a character, from the template's unused field: the Japanese ROM's x
++        AddTextPrinterParameterized(sNamingScreen->windows[WIN_TEXT_ENTRY], FONT_NORMAL, temp, i * 10 + sNamingScreen->template->unused + extraWidth, 1, TEXT_SKIP_DRAW, NULL);
++#else
+         AddTextPrinterParameterized(sNamingScreen->windows[WIN_TEXT_ENTRY], FONT_NORMAL, temp, i * 8 + x + extraWidth, 1, TEXT_SKIP_DRAW, NULL);
++#endif
+     }
+ 
+     TryDrawGenderIcon();
+@@ -1987,6 +2250,16 @@ static const u32 *const sNextKeyboardPageTilemaps[] =
+     [KBPAGE_LETTERS_LOWER] = gNamingScreenKeyboardSymbols_Tilemap  // symbols
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// Indexed by page when the pages start on katakana (IsKatakanaFirst)
++static const u32 *const sKatakanaFirst_NextKeyboardPageTilemaps[] =
++{
++    gNamingScreenKeyboardUpper_Tilemap,   // after katakana: hiragana
++    gNamingScreenKeyboardSymbols_Tilemap, // after hiragana: the Latin page
++    gNamingScreenKeyboardLower_Tilemap,   // after the Latin page: katakana
++};
++#endif
++
+ // There are always 2 keyboard pages drawn, the current page and the one that will shown next if the player swaps
+ // When the page swap is complete this function invisibly replaces the old page with the new next one
+ static void DrawKeyboardPageOnDeck(void)
+@@ -2010,6 +2283,11 @@ static void DrawKeyboardPageOnDeck(void)
+         windowId = sNamingScreen->windows[WIN_KB_PAGE_2];
+     }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    if (IsKatakanaFirst())
++        DrawBgTilemap(bg, sKatakanaFirst_NextKeyboardPageTilemaps[sNamingScreen->currentPage]);
++    else
++#endif
+     DrawBgTilemap(bg, sNextKeyboardPageTilemaps[sNamingScreen->currentPage]);
+     PrintKeyboardKeys(windowId, CurrentPageToNextKeyboardId());
+     NamingScreen_Dummy(bg, CurrentPageToNextKeyboardId());
+@@ -2021,7 +2299,11 @@ static void PrintControls(void)
+     const u8 color[3] = { TEXT_DYNAMIC_COLOR_6, TEXT_COLOR_WHITE, TEXT_COLOR_DARK_GRAY };
+ 
+     FillWindowPixelBuffer(sNamingScreen->windows[WIN_BANNER], PIXEL_FILL(15));
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    AddTextPrinterParameterized3(sNamingScreen->windows[WIN_BANNER], FONT_SMALL, 24, 0, color, 0, gText_MoveOkBack);
++#else
+     AddTextPrinterParameterized3(sNamingScreen->windows[WIN_BANNER], FONT_SMALL, 2, 1, color, 0, gText_MoveOkBack);
++#endif
+     PutWindowTilemap(sNamingScreen->windows[WIN_BANNER]);
+     CopyWindowToVram(sNamingScreen->windows[WIN_BANNER], COPYWIN_FULL);
+ }
+@@ -2274,6 +2556,32 @@ static const struct Subsprite sSubsprites_PageSwapFrame[] =
+     }
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++/*
++[0] [1]    two 8x8 glyphs, 8 apart: the kana pages' labels
++   ^-- Origin
++*/
++static const struct Subsprite sSubsprites_PageSwapTextKana[] =
++{
++    {
++        .x = -12,
++        .y = -4,
++        .shape = SPRITE_SHAPE(8x8),
++        .size = SPRITE_SIZE(8x8),
++        .tileOffset = 0,
++        .priority = 1
++    },
++    {
++        .x =   4,
++        .y = -4,
++        .shape = SPRITE_SHAPE(8x8),
++        .size = SPRITE_SIZE(8x8),
++        .tileOffset = 1,
++        .priority = 1
++    }
++};
++#endif
++
+ /*
+ [0_][] <-1    24x8
+    ^-- Origin
+@@ -2395,9 +2703,15 @@ static const struct SubspriteTable sSubspriteTable_PageSwapFrame[] =
+ 
+ static const struct SubspriteTable sSubspriteTable_PageSwapText[] =
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    [PAGE_SWAP_UPPER]  = {ARRAY_COUNT(sSubsprites_PageSwapTextKana), sSubsprites_PageSwapTextKana},
++    [PAGE_SWAP_OTHERS] = {ARRAY_COUNT(sSubsprites_PageSwapText), sSubsprites_PageSwapText},
++    [PAGE_SWAP_LOWER]  = {ARRAY_COUNT(sSubsprites_PageSwapTextKana), sSubsprites_PageSwapTextKana}
++#else
+     {ARRAY_COUNT(sSubsprites_PageSwapText), sSubsprites_PageSwapText},
+     {ARRAY_COUNT(sSubsprites_PageSwapText), sSubsprites_PageSwapText},
+     {ARRAY_COUNT(sSubsprites_PageSwapText), sSubsprites_PageSwapText}
++#endif
+ };
+ 
+ static const struct SubspriteTable sSubspriteTable_Button[] =
+@@ -2582,8 +2896,14 @@ static const struct SpriteSheet sSpriteSheets[] =
+     {gNamingScreenOKButton_Gfx,       0x1E0,  GFXTAG_OK_BUTTON},
+     {gNamingScreenPageSwapFrame_Gfx,  0x280,  GFXTAG_PAGE_SWAP_FRAME},
+     {gNamingScreenPageSwapButton_Gfx, 0x100,  GFXTAG_PAGE_SWAP_BUTTON},
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The kana pages' labels are two tiles (sSubsprites_PageSwapTextKana)
++    {gNamingScreenPageSwapUpper_Gfx,  0x040,  GFXTAG_PAGE_SWAP_UPPER},
++    {gNamingScreenPageSwapLower_Gfx,  0x040,  GFXTAG_PAGE_SWAP_LOWER},
++#else
+     {gNamingScreenPageSwapUpper_Gfx,  0x060,  GFXTAG_PAGE_SWAP_UPPER},
+     {gNamingScreenPageSwapLower_Gfx,  0x060,  GFXTAG_PAGE_SWAP_LOWER},
++#endif
+     {gNamingScreenPageSwapOthers_Gfx, 0x060,  GFXTAG_PAGE_SWAP_OTHERS},
+     {gNamingScreenCursor_Gfx,         0x080,  GFXTAG_CURSOR},
+     {gNamingScreenCursorSquished_Gfx, 0x080,  GFXTAG_CURSOR_SQUISHED},
