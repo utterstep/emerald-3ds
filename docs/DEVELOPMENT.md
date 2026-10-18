@@ -7,6 +7,11 @@
   `picasso` shader assembler.
 - A native host C/C++ compiler for the decomp tools and the host tests
   (on Windows, MSYS2 MinGW64's gcc/g++ on `PATH`).
+- libpng and pkg-config, for the decomp's `gbagfx` and `rsfont`
+  (on macOS, `brew install libpng pkgconf`).
+- GNU Make 4+. macOS ships 3.81, which silently skips the `$(file ...)` the
+  3DSX link needs; `brew install make`, and bootstrap puts its `gnubin` first
+  on `PATH`.
 - Python 3.11+ with Pillow.
 - git.
 

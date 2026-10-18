@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import os
+import platform
 import tomllib
 from pathlib import Path
 
@@ -48,18 +49,25 @@ LOCALES = {
     "japanese": ("BPEJ", "localize_japanese.py", "japanese.json.gz"),
 }
 
+# 3ds_port/Makefile needs GNU Make 4+ for $(file ...); macOS ships 3.81, which
+# expands it to nothing, so Homebrew's gnubin goes first even with devkitPro set up.
+extra_paths = ["/opt/homebrew/opt/make/libexec/gnubin"]
 if "/opt/devkitpro" not in os.environ.get("PATH", ""):
-    extra_paths = [p for p in ("/opt/homebrew/opt/make/libexec/gnubin", "/opt/homebrew/bin",
-                               "/opt/devkitpro/tools/bin", "/opt/devkitpro/devkitARM/bin")
-                   if os.path.isdir(p)]
-    if extra_paths:
-        os.environ["PATH"] = os.pathsep.join(extra_paths + [os.environ.get("PATH", "")])
+    extra_paths += ["/opt/homebrew/bin", "/opt/devkitpro/tools/bin", "/opt/devkitpro/devkitARM/bin"]
+extra_paths = [p for p in extra_paths if os.path.isdir(p)]
+if extra_paths:
+    os.environ["PATH"] = os.pathsep.join(extra_paths + [os.environ.get("PATH", "")])
 os.environ.setdefault("DEVKITPRO", "/opt/devkitpro")
 os.environ.setdefault("DEVKITARM", "/opt/devkitpro/devkitARM")
-libpng_pc = "/opt/homebrew/opt/libpng/lib/pkgconfig"
-if os.path.exists(libpng_pc):
+# libpng.pc requires zlib.pc, which macOS has only in Homebrew's os/mac/pkgconfig;
+# devkitPro's pkg-config, ahead of Homebrew's on PATH, doesn't search there.
+pkg_dirs = ["/opt/homebrew/opt/libpng/lib/pkgconfig"]
+if platform.mac_ver()[0]:
+    pkg_dirs.append("/opt/homebrew/Library/Homebrew/os/mac/pkgconfig/" + platform.mac_ver()[0].split(".")[0])
+pkg_dirs = [p for p in pkg_dirs if os.path.isdir(p)]
+if pkg_dirs:
     current_pkg = os.environ.get("PKG_CONFIG_PATH", "")
-    os.environ["PKG_CONFIG_PATH"] = f"{libpng_pc}{os.pathsep}{current_pkg}" if current_pkg else libpng_pc
+    os.environ["PKG_CONFIG_PATH"] = os.pathsep.join(pkg_dirs + ([current_pkg] if current_pkg else []))
 
 
 def run(cmd, cwd=None):
