@@ -14,8 +14,9 @@ move and Pokemon id lists in the ROM's kana order, the reference symbols
 code patch of this repository (the manifest's "graphics_patch_of"); they are
 staged only into a tree that has it. Graphics with another size or layout
 ("graphics_layout_differs") and the Trainer Hill floors (the Japanese ROM has no
-counterpart of the four modes) stay English. The engine changes a Japanese game
-needs are listed in docs/JAPANESE.md; console play testing is pending.
+counterpart of the four modes) stay English. Patches 0057-0061 and 0070-0073
+make a Japanese build behave like the Japanese game; what is still open is listed
+in docs/JAPANESE.md, and console play testing is pending.
 
 Differences from the Italian manifest: braille ranges include the 6-byte
 brailleformat header, and kind "c_eos" is a Japanese string stored without its
@@ -168,8 +169,7 @@ def stage(tree: Path, rom_path: Path) -> None:
     for path, data in writes.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    print("Japanese game data staged; the engine changes for a Japanese game (docs/JAPANESE.md) "
-          "and console play testing are pending.")
+    print("Japanese game data staged; console play testing is pending (docs/JAPANESE.md).")
 
 
 def main() -> None:

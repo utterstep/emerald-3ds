@@ -144,9 +144,9 @@ them with `tools/localize_spanish.py` (docs/SPANISH.md),
 the engine there and writes its recipe with the symbol names of
 `build/spanish-reference.s` (resp. `build/french-reference.s`, ...), which the
 localization stages from `tools/locales/<language>-symbols.s.gz`; a variant
-whose localization stages none stops there (the Japanese one, until
-`japanese-symbols.s.gz` exists). Without these options the release is
-English-only, as before.
+whose localization stages none stops there. The Japanese symbol file names only
+the staged graphics and the Easy Chat lists, so that recipe has fewer symbol
+hints. Without these options the release is English-only, as before.
 
 ## Prerequisites (maintainer machine)
 
