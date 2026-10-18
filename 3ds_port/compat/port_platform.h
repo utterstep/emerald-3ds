@@ -53,7 +53,7 @@ const void *Port_ResolveSpriteFramePointer(const void *base, u32 size, u32 offse
 /* The same, only if the frame is already in memory: NULL rather than a read. */
 const void *Port_PeekSpriteFramePointer(const void *base, u32 size, u32 offset);
 const void *Port_ResolveFontPointer(const void *ptr);
-void Port_PreloadLatinFonts(void);
+void Port_PreloadFonts(void);
 u32 Port_GetDecompressedAssetSize(const void *ptr);
 const void *Port_ResolveEventPointer(const void *ptr);
 const u8 *Port_ResolveScriptPointer(const u8 *ptr);

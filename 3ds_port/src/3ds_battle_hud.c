@@ -6,7 +6,8 @@
  * status pill or the caught ball, the Safari Zone's balls - is told as the
  * game draws it into the box's sprites, and the slot's picture is redrawn
  * from it: the port's own art (romfs:/battle/hud.bin, gen_battle_hud.py), the
- * game's font at 1:1, and the game's own small labels ("HP", "EXP", the
+ * game's font at 1:1 (Latin and Japanese glyphs, as the name has them), and
+ * the game's own small labels ("HP", "EXP", the
  * status pills' letters, localized in the Spanish game) traced smooth at the
  * screen's 1.4x. A palette fade of the box's sprites is measured here and
  * applied by the compositor as a tint, the picture left as it is.
@@ -34,6 +35,7 @@
 #include "constants/characters.h"
 
 #include "3ds_battle_hud.h"
+#include "3ds_locale.h"
 #include "3ds_log.h"
 #include "3ds_video.h"
 #include "3ds_platform.h"
@@ -585,22 +587,52 @@ static void MakeLabels(const uint16_t *boxTileVram)
 /* Text: the game's normal font, 1:1                                        */
 /* ------------------------------------------------------------------------ */
 
-static const u16 *FontGlyphs(void)
+/*
+ * Its two glyph sets, as src/text.c's DecompressGlyph_Normal addresses them:
+ * the Latin one, 0x20 halfwords a glyph (its four tiles) and a width each;
+ * the Japanese one, 16 glyphs a row of 0x100 halfwords (their top tiles,
+ * then their bottom ones), 8 pixels wide (GetGlyphWidth_Normal).
+ */
+typedef struct
 {
-    const void *resolved = Port_ResolveFontPointer(gFontNormalLatinGlyphs);
+    const u16 *latin, *japanese;
+} Glyphs;
 
-    if (resolved == (const void *)gFontNormalLatinGlyphs)
-        resolved = Port_ResolveAssetPointer(gFontNormalLatinGlyphs);
+/* NextGlyph's glyphs of the Japanese set carry this bit. */
+#define GLYPH_JAPANESE 0x200
+#define JAPANESE_GLYPH_WIDTH 8
+
+static const u16 *ResolveGlyphs(const u16 *stub)
+{
+    const void *resolved = Port_ResolveFontPointer(stub);
+
+    if (resolved == (const void *)stub)
+        resolved = Port_ResolveAssetPointer(stub);
     return resolved;
+}
+
+/* The Japanese set is loaded with the Latin ones (3ds_compat.c,
+ * Port_PreloadFonts): without it a Japanese glyph is left blank. */
+static Glyphs FontGlyphs(void)
+{
+    const void *japanese = Port_ResolveFontPointer(gFontNormalJapaneseGlyphs);
+    Glyphs glyphs = {ResolveGlyphs(gFontNormalLatinGlyphs),
+                     japanese == (const void *)gFontNormalJapaneseGlyphs ? NULL : japanese};
+
+    return glyphs;
 }
 
 static int GlyphWidth(unsigned glyph)
 {
-    return gFontNormalLatinGlyphWidths[glyph];
+    return glyph & GLYPH_JAPANESE ? JAPANESE_GLYPH_WIDTH : gFontNormalLatinGlyphWidths[glyph];
 }
 
-/* A game string's next glyph, past its control codes; -1 at its end. */
-static int NextGlyph(const uint8_t **str)
+/* A game string's next glyph, past its control codes; -1 at its end.
+ * *japanese is the glyph set it is in, from CTR_LOCALE_JAPANESE_FIRST at its
+ * start: EXT_CTRL_CODE_JPN and _ENG switch it, as in the game's text printer
+ * (a Japanese Pokémon's name in another language's game comes between
+ * them), and a glyph of the Japanese set carries GLYPH_JAPANESE. */
+static int NextGlyph(const uint8_t **str, bool *japanese)
 {
     for (;;)
     {
@@ -614,6 +646,10 @@ static int NextGlyph(const uint8_t **str)
         case EXT_CTRL_CODE_BEGIN:
             if (**str == EOS)
                 return -1;
+            if (**str == EXT_CTRL_CODE_JPN)
+                *japanese = true;
+            else if (**str == EXT_CTRL_CODE_ENG)
+                *japanese = false;
             *str += GetExtCtrlCodeLength(**str);
             break;
         case PLACEHOLDER_BEGIN:
@@ -632,7 +668,7 @@ static int NextGlyph(const uint8_t **str)
         case CHAR_PROMPT_CLEAR:
             break;
         default:
-            return c;
+            return (*japanese ? GLYPH_JAPANESE : 0) | c;
         }
     }
 }
@@ -640,21 +676,35 @@ static int NextGlyph(const uint8_t **str)
 static int TextWidth(const uint8_t *str)
 {
     int width = 0;
+    bool japanese = CTR_LOCALE_JAPANESE_FIRST;
 
-    for (int g; (g = NextGlyph(&str)) >= 0;)
+    for (int g; (g = NextGlyph(&str, &japanese)) >= 0;)
         width += GlyphWidth(g);
     return width;
 }
 
-static int DrawGlyph(uint32_t *pic, const u16 *glyphs, unsigned glyph, int x, int y, uint32_t fg, uint32_t shadow)
+static int DrawGlyph(uint32_t *pic, const Glyphs *glyphs, unsigned glyph, int x, int y, uint32_t fg, uint32_t shadow)
 {
-    const u16 *base = glyphs + glyph * 0x20;
-    int width = GlyphWidth(glyph);
+    const u16 *base;
+    int width = GlyphWidth(glyph), bottom;
 
+    if (glyph & GLYPH_JAPANESE)
+    {
+        glyph &= 0x1FF;
+        base = glyphs->japanese ? glyphs->japanese + 0x100 * (glyph >> 4) + 8 * (glyph & 0xF) : NULL;
+        bottom = 0x80;
+    }
+    else
+    {
+        base = glyphs->latin ? glyphs->latin + glyph * 0x20 : NULL;
+        bottom = 0x10;
+    }
+    if (!base)
+        return width;
     for (int row = 0; row < 16; ++row)
         for (int half = 0; half < 2 && half * 8 < width; ++half)
         {
-            u16 bits = base[(row >= 8 ? 0x10 : 0) + half * 8 + (row & 7)];
+            u16 bits = base[(row >= 8 ? bottom : 0) + half * 8 + (row & 7)];
 
             if (!bits)
                 continue;
@@ -673,23 +723,35 @@ static int DrawGlyph(uint32_t *pic, const u16 *glyphs, unsigned glyph, int x, in
 
 static int DrawText(uint32_t *pic, const uint8_t *str, int x, int y, uint32_t fg)
 {
-    const u16 *glyphs;
+    Glyphs glyphs;
+    bool japanese = CTR_LOCALE_JAPANESE_FIRST;
 
     /* Outside the rows being drawn again (Compose): only where it ends. */
     if (y + 16 <= sRowTop || y >= sRowBottom)
         return x + TextWidth(str);
     glyphs = FontGlyphs();
 
-    if (!glyphs)
+    if (!glyphs.latin)
         return x;
-    for (int g; (g = NextGlyph(&str)) >= 0;)
-        x += DrawGlyph(pic, glyphs, g, x, y, fg, TEXT_SHADOW);
+    for (int g; (g = NextGlyph(&str, &japanese)) >= 0;)
+        x += DrawGlyph(pic, &glyphs, g, x, y, fg, TEXT_SHADOW);
     return x;
 }
 
 static void DrawTextRight(uint32_t *pic, const uint8_t *str, int right, int y)
 {
     DrawText(pic, str, right - TextWidth(str), y, TEXT_FG);
+}
+
+/* Where a string the port builds from the Latin glyphs ("Lv", the HP
+ * numbers) goes on: past the switch to them, in a Japanese build. */
+static uint8_t *LatinStart(uint8_t *out)
+{
+#if CTR_LOCALE_JAPANESE_FIRST
+    *out++ = EXT_CTRL_CODE_BEGIN;
+    *out++ = EXT_CTRL_CODE_ENG;
+#endif
+    return out;
 }
 
 /* A number in the game's characters; returns the end of the string. */
@@ -795,7 +857,7 @@ static void Compose(int index, int top, int bottom)
         if (numbers)
         {
             /* The doubles' HP numbers, in place of the bar (SwapHpBarsWithHpText). */
-            uint8_t text[16], *p = Digits(text, slot->hp);
+            uint8_t text[16], *p = Digits(LatinStart(text), slot->hp);
 
             *p++ = CHAR_SLASH;
             Digits(p, slot->maxHp);
@@ -846,20 +908,23 @@ static void Compose(int index, int top, int bottom)
         }
         else
         {
-            uint8_t text[16];
+            uint8_t text[16], *p;
             int x = DrawText(pic, slot->name, Px(layout->nameX), y, TEXT_FG);
+            Glyphs glyphs = FontGlyphs();
 
+            /* The gender, "Lv" and the numbers in the Latin glyphs in any
+             * language: the box's art is laid out for their widths. */
             if (slot->gender == 0)
-                DrawGlyph(pic, FontGlyphs(), CHAR_MALE, x, y, TEXT_MALE, TEXT_SHADOW);
+                DrawGlyph(pic, &glyphs, CHAR_MALE, x, y, TEXT_MALE, TEXT_SHADOW);
             else if (slot->gender == 1)
-                DrawGlyph(pic, FontGlyphs(), CHAR_FEMALE, x, y, TEXT_FEMALE, TEXT_SHADOW);
-            text[0] = CHAR_LV;
-            Digits(text + 1, slot->level);
+                DrawGlyph(pic, &glyphs, CHAR_FEMALE, x, y, TEXT_FEMALE, TEXT_SHADOW);
+            p = LatinStart(text);
+            *p++ = CHAR_LV;
+            Digits(p, slot->level);
             DrawTextRight(pic, text, Px(layout->levelRight + 0.5f), y);
             if (layout->hpText)
             {
-                uint8_t *p = Digits(text, slot->hp);
-
+                p = Digits(LatinStart(text), slot->hp);
                 *p++ = CHAR_SLASH;
                 Digits(p, slot->maxHp);
                 DrawTextRight(pic, text, Px(96.5f), Px(24) - 3);

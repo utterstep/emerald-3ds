@@ -94,8 +94,14 @@ int main(void) {
             code = folder / "clock.c"
             binary = folder / "clock"
             code.write_text(harness, encoding="utf-8")
+            # The Spanish build's language (3ds_locale.h reads it).
+            (folder / "constants").mkdir()
+            (folder / "constants/global.h").write_text(
+                "#define LANGUAGE_JAPANESE 1\n#define LANGUAGE_ENGLISH 2\n#define LANGUAGE_FRENCH 3\n"
+                "#define LANGUAGE_ITALIAN 4\n#define LANGUAGE_SPANISH 7\n"
+                "#define GAME_LANGUAGE LANGUAGE_SPANISH\n", encoding="utf-8")
             subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
-                            "-I", str(ROOT / "3ds_port/include"),
+                            "-I", str(folder), "-I", str(ROOT / "3ds_port/include"),
                             str(code), "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 

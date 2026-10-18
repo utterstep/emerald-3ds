@@ -179,18 +179,24 @@ void Port_RecordMainLoopIteration(void)
     CtrAssets_Collect();
 }
 
-/* ── Latin fonts ────────────────────────────────────────────────────────── */
+/* ── Fonts ──────────────────────────────────────────────────────────────── */
 
 extern const u16 gFontSmallNarrowLatinGlyphs[];
 extern const u16 gFontSmallLatinGlyphs[];
 extern const u16 gFontNarrowLatinGlyphs[];
 extern const u16 gFontShortLatinGlyphs[];
 extern const u16 gFontNormalLatinGlyphs[];
+extern const u16 gFontSmallJapaneseGlyphs[];
+extern const u16 gFontNormalJapaneseGlyphs[];
 
 /*
  * The stubs of the five latin fonts are packed almost back to back, so an
  * interior pointer derived from one of them aliases another family. Callers
  * must resolve the base first and apply glyph offsets to the loaded buffer.
+ * The two Japanese half-width sets are every Japanese build's text, and the
+ * bottom screen and the battle's info boxes draw a Japanese Pokémon's name
+ * with them in any build: loaded once like the Latin ones, never evicted
+ * from the asset cache in the middle of a message or read inside a redraw.
  */
 static struct
 {
@@ -198,25 +204,27 @@ static struct
     const char *path;
     u8 *raw;
     u32 size;
-} sLatinFonts[] = {
+} sFonts[] = {
     { gFontSmallNarrowLatinGlyphs, "graphics/fonts/small_narrow.latfont", NULL, 0 },
     { gFontSmallLatinGlyphs,       "graphics/fonts/small.latfont",        NULL, 0 },
     { gFontNarrowLatinGlyphs,      "graphics/fonts/narrow.latfont",       NULL, 0 },
     { gFontShortLatinGlyphs,       "graphics/fonts/short.latfont",        NULL, 0 },
     { gFontNormalLatinGlyphs,      "graphics/fonts/normal.latfont",       NULL, 0 },
+    { gFontSmallJapaneseGlyphs,    "graphics/fonts/small.hwjpnfont",      NULL, 0 },
+    { gFontNormalJapaneseGlyphs,   "graphics/fonts/normal.hwjpnfont",     NULL, 0 },
 };
 
-static bool LoadLatinFont(unsigned index)
+static bool LoadFont(unsigned index)
 {
     FILE *file;
     long size;
 
-    if (sLatinFonts[index].raw != NULL)
+    if (sFonts[index].raw != NULL)
         return true;
-    file = CtrData_Open(sLatinFonts[index].path);
+    file = CtrData_Open(sFonts[index].path);
     if (file == NULL)
     {
-        PORT_LOG("[ERROR] font missing: %s\n", sLatinFonts[index].path);
+        PORT_LOG("[ERROR] font missing: %s\n", sFonts[index].path);
         return false;
     }
     if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) <= 0
@@ -225,18 +233,18 @@ static bool LoadLatinFont(unsigned index)
         fclose(file);
         return false;
     }
-    sLatinFonts[index].raw = malloc((size_t)size);
-    if (sLatinFonts[index].raw == NULL
-     || fread(sLatinFonts[index].raw, 1, (size_t)size, file) != (size_t)size)
+    sFonts[index].raw = malloc((size_t)size);
+    if (sFonts[index].raw == NULL
+     || fread(sFonts[index].raw, 1, (size_t)size, file) != (size_t)size)
     {
-        free(sLatinFonts[index].raw);
-        sLatinFonts[index].raw = NULL;
+        free(sFonts[index].raw);
+        sFonts[index].raw = NULL;
         fclose(file);
-        PORT_LOG("[ERROR] font unreadable: %s\n", sLatinFonts[index].path);
+        PORT_LOG("[ERROR] font unreadable: %s\n", sFonts[index].path);
         return false;
     }
     fclose(file);
-    sLatinFonts[index].size = (u32)size;
+    sFonts[index].size = (u32)size;
     return true;
 }
 
@@ -244,28 +252,28 @@ const void *Port_ResolveFontPointer(const void *ptr)
 {
     unsigned i;
 
-    for (i = 0; i < ARRAY_COUNT(sLatinFonts); i++)
+    for (i = 0; i < ARRAY_COUNT(sFonts); i++)
     {
-        if (ptr != sLatinFonts[i].stubBase)
+        if (ptr != sFonts[i].stubBase)
             continue;
-        if (!LoadLatinFont(i))
+        if (!LoadFont(i))
             return ptr;
-        return sLatinFonts[i].raw;
+        return sFonts[i].raw;
     }
     return ptr;
 }
 
-void Port_PreloadLatinFonts(void)
+void Port_PreloadFonts(void)
 {
     unsigned i;
 
-    for (i = 0; i < ARRAY_COUNT(sLatinFonts); i++)
-        LoadLatinFont(i);
+    for (i = 0; i < ARRAY_COUNT(sFonts); i++)
+        LoadFont(i);
 }
 
 void Port_TextPreload(void)
 {
-    Port_PreloadLatinFonts();
+    Port_PreloadFonts();
 }
 
 bool Port_FontProbe_ReadNormalLatinGlyph(u16 glyphId, u8 *outBuf, u32 outSize)
@@ -273,10 +281,10 @@ bool Port_FontProbe_ReadNormalLatinGlyph(u16 glyphId, u8 *outBuf, u32 outSize)
     const u8 *raw;
     u32 offset = (u32)glyphId * 0x40;
 
-    if (outBuf == NULL || outSize < 0x40 || !LoadLatinFont(4))
+    if (outBuf == NULL || outSize < 0x40 || !LoadFont(4))
         return false;
-    raw = sLatinFonts[4].raw;
-    if (offset + 0x40 > sLatinFonts[4].size)
+    raw = sFonts[4].raw;
+    if (offset + 0x40 > sFonts[4].size)
         return false;
     memcpy(outBuf, raw + offset, 0x40);
     return true;
@@ -284,7 +292,7 @@ bool Port_FontProbe_ReadNormalLatinGlyph(u16 glyphId, u8 *outBuf, u32 outSize)
 
 const void *Port_FontProbe_GetNormalLatinStubBase(void)
 {
-    return sLatinFonts[4].stubBase;
+    return sFonts[4].stubBase;
 }
 
 u16 Port_FontProbe_CompareNormalLatinGlyph(u16 glyphId)

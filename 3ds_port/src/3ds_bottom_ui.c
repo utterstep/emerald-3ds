@@ -1094,14 +1094,25 @@ static void BuildTypeColours(void)
 /* Text                                                                     */
 /* ------------------------------------------------------------------------ */
 
+/*
+ * A font's two glyph sets, as src/text.c's DecompressGlyph_Small/_Normal
+ * address them: the Latin one, 0x20 halfwords a glyph (its four tiles) and
+ * a width each; the Japanese one, 16 glyphs a row of 0x100 halfwords (their
+ * top tiles, then their bottom ones), 8 pixels wide (GetGlyphWidth_*).
+ */
 typedef struct
 {
     const u16 *glyphs;
     const u8 *widths;
+    const u16 *japanese;
     u8 height, lineHeight;
 } Font;
 
 static Font sSmall, sNormal;
+
+/* NextGlyph's glyphs of the Japanese set carry this bit. */
+#define GLYPH_JAPANESE 0x200
+#define JAPANESE_GLYPH_WIDTH 8
 
 static const u16 *ResolveFontBase(const u16 *glyphs)
 {
@@ -1112,22 +1123,38 @@ static const u16 *ResolveFontBase(const u16 *glyphs)
     return resolved;
 }
 
+/* The Japanese sheets are loaded with the Latin ones (3ds_compat.c,
+ * Port_PreloadFonts): without them a Japanese glyph is left blank, as in a
+ * Latin build that never needs one. */
+static const u16 *ResolveJapaneseFont(const u16 *glyphs)
+{
+    const void *resolved = Port_ResolveFontPointer(glyphs);
+
+    return resolved == glyphs ? NULL : resolved;
+}
+
 /* The glyph payloads live in the asset cache; resolve them per redraw. */
 static void ResolveFonts(void)
 {
     sSmall.glyphs = ResolveFontBase(gFontSmallLatinGlyphs);
     sSmall.widths = gFontSmallLatinGlyphWidths;
+    sSmall.japanese = ResolveJapaneseFont(gFontSmallJapaneseGlyphs);
     sSmall.height = 13;
     sSmall.lineHeight = 13;
     sNormal.glyphs = ResolveFontBase(gFontNormalLatinGlyphs);
     sNormal.widths = gFontNormalLatinGlyphWidths;
+    sNormal.japanese = ResolveJapaneseFont(gFontNormalJapaneseGlyphs);
     sNormal.height = 16;
     sNormal.lineHeight = 16;
 }
 
 /* Walks a game string: returns the next glyph, 0xFFFE for a line break or
- * 0xFFFF at the end. */
-static u16 NextGlyph(const u8 **str)
+ * 0xFFFF at the end. *japanese is the glyph set it is in, from
+ * CTR_LOCALE_JAPANESE_FIRST at its start: EXT_CTRL_CODE_JPN and _ENG switch
+ * it, as in the game's text printer (a Japanese Pokémon's name in another
+ * language's game comes between them), and a glyph of the Japanese set
+ * carries GLYPH_JAPANESE. */
+static u16 NextGlyph(const u8 **str, bool8 *japanese)
 {
     for (;;)
     {
@@ -1145,6 +1172,10 @@ static u16 NextGlyph(const u8 **str)
         case EXT_CTRL_CODE_BEGIN:
             if (**str == EOS)
                 return 0xFFFF;
+            if (**str == EXT_CTRL_CODE_JPN)
+                *japanese = TRUE;
+            else if (**str == EXT_CTRL_CODE_ENG)
+                *japanese = FALSE;
             *str += GetExtCtrlCodeLength(**str);
             break;
         case PLACEHOLDER_BEGIN:
@@ -1156,20 +1187,40 @@ static u16 NextGlyph(const u8 **str)
         case CHAR_EXTRA_SYMBOL:
             if (**str == EOS)
                 return 0xFFFF;
-            return 0x100 | *(*str)++;
+            return (*japanese ? GLYPH_JAPANESE : 0) | 0x100 | *(*str)++;
         default:
-            return c;
+            return (*japanese ? GLYPH_JAPANESE : 0) | c;
         }
     }
+}
+
+static int GlyphWidth(const Font *font, u16 glyph)
+{
+    return glyph & GLYPH_JAPANESE ? JAPANESE_GLYPH_WIDTH : font->widths[glyph];
+}
+
+/* A glyph's first tile, and in *bottom where its bottom tiles are from it;
+ * NULL without its set. */
+static const u16 *GlyphTiles(const Font *font, u16 glyph, int *bottom)
+{
+    if (glyph & GLYPH_JAPANESE)
+    {
+        glyph &= 0x1FF;
+        *bottom = 0x80;
+        return font->japanese ? font->japanese + 0x100 * (glyph >> 4) + 8 * (glyph & 0xF) : NULL;
+    }
+    *bottom = 0x10;
+    return font->glyphs ? font->glyphs + glyph * 0x20 : NULL;
 }
 
 static int StrWidth(const Font *font, const u8 *str)
 {
     int width = 0, best = 0;
+    bool8 japanese = CTR_LOCALE_JAPANESE_FIRST;
 
     if (!str)
         return 0;
-    for (u16 g; (g = NextGlyph(&str)) != 0xFFFF;)
+    for (u16 g; (g = NextGlyph(&str, &japanese)) != 0xFFFF;)
     {
         if (g == 0xFFFE)
         {
@@ -1177,29 +1228,30 @@ static int StrWidth(const Font *font, const u8 *str)
             width = 0;
             continue;
         }
-        width += font->widths[g];
+        width += GlyphWidth(font, g);
     }
     return width > best ? width : best;
 }
 
 static int DrawGlyph(const Font *font, u16 glyph, int x, int y, u16 fg, u16 shadow)
 {
-    const u16 *base = font->glyphs + glyph * 0x20;
-    int width = font->widths[glyph];
+    int bottom;
+    const u16 *base = GlyphTiles(font, glyph, &bottom);
+    int advance = GlyphWidth(font, glyph), width = advance;
     int sx = x + sOX;
     bool8 inside = sx >= sClipX0 && y >= sClipY0 && sx + width <= sClipX1 && y + font->height <= sClipY1;
     u16 *origin = sDst + (inside ? sx * H + (H - 1 - y) : 0);
 
     /* Wholly outside the clip: nothing to write. */
-    if (sx >= sClipX1 || y >= sClipY1 || sx + width <= sClipX0 || y + font->height <= sClipY0)
-        return font->widths[glyph];
+    if (!base || sx >= sClipX1 || y >= sClipY1 || sx + width <= sClipX0 || y + font->height <= sClipY0)
+        return advance;
     if (width > 16)
         width = 16;
     for (int row = 0; row < font->height; ++row)
     {
         for (int half = 0; half < 2 && half * 8 < width; ++half)
         {
-            u16 bits = base[(row >= 8 ? 0x10 : 0) + half * 8 + (row & 7)];
+            u16 bits = base[(row >= 8 ? bottom : 0) + half * 8 + (row & 7)];
 
             if (!bits)
                 continue;
@@ -1218,17 +1270,18 @@ static int DrawGlyph(const Font *font, u16 glyph, int x, int y, u16 fg, u16 shad
             }
         }
     }
-    return font->widths[glyph];
+    return advance;
 }
 
 /* Draws a game string; returns the x where it ended. */
 static int DrawStr(const Font *font, const u8 *str, int x, int y, u16 fg, u16 shadow)
 {
     int left = x;
+    bool8 japanese = CTR_LOCALE_JAPANESE_FIRST;
 
     if (!font->glyphs || !str)
         return x;
-    for (u16 g; (g = NextGlyph(&str)) != 0xFFFF;)
+    for (u16 g; (g = NextGlyph(&str, &japanese)) != 0xFFFF;)
     {
         if (g == 0xFFFE)
         {
@@ -1254,7 +1307,9 @@ static void DrawStrCentered(const Font *font, const u8 *str, int cx, int y, u16 
 /* Whether a glyph paints (glyph or shadow) the pixel at column px of row. */
 static bool8 GlyphInk(const Font *font, u16 glyph, int px, int row)
 {
-    u16 bits = font->glyphs[glyph * 0x20 + (row >= 8 ? 0x10 : 0) + (px / 8) * 8 + (row & 7)];
+    int bottom;
+    const u16 *base = GlyphTiles(font, glyph, &bottom);
+    u16 bits = base ? base[(row >= 8 ? bottom : 0) + (px / 8) * 8 + (row & 7)] : 0;
     u8 byte = (px & 7) < 4 ? bits >> 8 : bits & 0xFF;
     u8 v = (byte >> (6 - 2 * (px & 3))) & 3;
 
@@ -1266,12 +1321,13 @@ static bool8 GlyphInk(const Font *font, u16 glyph, int px, int row)
 static void InkColumns(const Font *font, const u8 *str, int *x0, int *x1)
 {
     int x = 0;
+    bool8 japanese = CTR_LOCALE_JAPANESE_FIRST;
 
     *x0 = 0x7FFF;
     *x1 = 0;
-    for (u16 g; (g = NextGlyph(&str)) != 0xFFFF && g != 0xFFFE;)
+    for (u16 g; (g = NextGlyph(&str, &japanese)) != 0xFFFF && g != 0xFFFE;)
     {
-        int width = font->widths[g] > 16 ? 16 : font->widths[g];
+        int advance = GlyphWidth(font, g), width = advance > 16 ? 16 : advance;
 
         for (int px = 0; px < width; ++px)
             for (int row = 0; row < font->height; ++row)
@@ -1281,7 +1337,7 @@ static void InkColumns(const Font *font, const u8 *str, int *x0, int *x1)
                     if (x + px + 1 > *x1) *x1 = x + px + 1;
                     break;
                 }
-        x += font->widths[g];
+        x += advance;
     }
 }
 
@@ -1317,7 +1373,9 @@ static void DrawStrIn(const Font *font, const u8 *str, int x0, int x1, int y0, i
             shadow);
 }
 
-/* Latin labels for the few words the game has no standalone string for. */
+/* The port's labels, for the few words the game has no standalone string for:
+ * in the Latin glyphs, or the Japanese ones for a label with kana
+ * (CtrLocale_ToGame). */
 static const u8 *Ascii(const char *text)
 {
     static u8 ring[8][40];
@@ -1534,7 +1592,8 @@ typedef struct
     u8 stage, k, part;
     u16 row;
     u16 strAt;          /* SJ_GLYPHS: the next glyph's byte in the key (0: the first step) */
-    int glyphX;         /* ... and where it goes */
+    int glyphX;         /* ... where it goes */
+    bool8 strJapanese;  /* ... and its glyph set (NextGlyph) */
     int w4, h4, ringRadius, shadowRadius;
     u8 *glyph, *ring, *shadow, *tmp;
     int *sums;
@@ -1600,11 +1659,13 @@ static void StepSmoothJob(void)
         const Font *font = sJob.font;
         const u8 *str = t->key + sJob.strAt;
         int x = sJob.strAt ? sJob.glyphX : SMOOTH_PAD;
+        bool8 japanese = sJob.strAt ? sJob.strJapanese : CTR_LOCALE_JAPANESE_FIRST;
 
         for (int n = 0;; ++n)
         {
             const u8 *at = str;
-            u16 g = NextGlyph(&str);
+            bool8 atJapanese = japanese;
+            u16 g = NextGlyph(&str, &japanese);
 
             if (g == 0xFFFF || g == 0xFFFE)
                 break;
@@ -1613,15 +1674,17 @@ static void StepSmoothJob(void)
                 /* The rest next step, from this glyph on. */
                 sJob.strAt = (u16)(at - t->key);
                 sJob.glyphX = x;
+                sJob.strJapanese = atJapanese;
                 return;
             }
-            const u16 *base = font->glyphs + g * 0x20;
-            int width = font->widths[g] > 16 ? 16 : font->widths[g];
+            int bottom;
+            const u16 *base = GlyphTiles(font, g, &bottom);
+            int advance = GlyphWidth(font, g), width = advance > 16 ? 16 : advance;
 
-            for (int row = 0; row < font->height; ++row)
+            for (int row = 0; base && row < font->height; ++row)
                 for (int px = 0; px < width; ++px)
                 {
-                    u16 bits = base[(row >= 8 ? 0x10 : 0) + (px / 8) * 8 + (row & 7)];
+                    u16 bits = base[(row >= 8 ? bottom : 0) + (px / 8) * 8 + (row & 7)];
                     u8 byte = (px & 7) < 4 ? bits >> 8 : bits & 0xFF;
 
                     if (((byte >> (6 - 2 * (px & 3))) & 3) != 1)
@@ -1629,7 +1692,7 @@ static void StepSmoothJob(void)
                     for (int dy = 0; dy < k; ++dy)
                         memset(glyph + ((SMOOTH_PAD + row) * k + dy) * w4 + (x + px) * k, 255, k);
                 }
-            x += font->widths[g];
+            x += advance;
         }
         /* The outline: blurred and hardened, and never thinner than a dilation. */
         memcpy(ring, glyph, (size_t)w4 * h4);
@@ -1813,16 +1876,18 @@ static void DrawFlatStr(const Font *font, const u8 *str, int x, int y, int k, Rg
     {
         const u8 *s = str;
         int gx = 0;
+        bool8 japanese = CTR_LOCALE_JAPANESE_FIRST;
 
-        for (u16 g; (g = NextGlyph(&s)) != 0xFFFF && g != 0xFFFE;)
+        for (u16 g; (g = NextGlyph(&s, &japanese)) != 0xFFFF && g != 0xFFFE;)
         {
-            const u16 *base = font->glyphs + g * 0x20;
-            int width = font->widths[g] > 16 ? 16 : font->widths[g];
+            int bottom;
+            const u16 *base = GlyphTiles(font, g, &bottom);
+            int advance = GlyphWidth(font, g), width = advance > 16 ? 16 : advance;
 
-            for (int row = 0; row < font->height; ++row)
+            for (int row = 0; base && row < font->height; ++row)
                 for (int px = 0; px < width; ++px)
                 {
-                    u16 bits = base[(row >= 8 ? 0x10 : 0) + (px / 8) * 8 + (row & 7)];
+                    u16 bits = base[(row >= 8 ? bottom : 0) + (px / 8) * 8 + (row & 7)];
                     u8 byte = (px & 7) < 4 ? bits >> 8 : bits & 0xFF;
                     int x0 = x + ((gx + px) * k >> 2), y0 = y + (row * k >> 2);
                     int x1 = x + ((gx + px + 1) * k >> 2), y1 = y + ((row + 1) * k >> 2);
@@ -1834,7 +1899,7 @@ static void DrawFlatStr(const Font *font, const u8 *str, int x, int y, int k, Rg
                     else
                         FillRect(x0, y0, x1 - x0, y1 - y0, colours[1]);
                 }
-            gx += font->widths[g];
+            gx += advance;
         }
     }
 }
@@ -3283,7 +3348,7 @@ enum { PLATE_NORMAL, PLATE_CHOSEN, PLATE_PRESSED, PLATE_OFF };
 static void DrawColumnButton(const ViewState *s, int i, u8 state)
 {
     const u8 *labels[SCR_COUNT] = {
-        Ascii(CTR_TEXT("MAP", "MAPA", "CARTE", "MAPPA")), gText_MenuPokemon, gText_MenuBag, s->name, gText_MenuPokedex, gText_MenuPokenav,
+        Ascii(CTR_TEXT("MAP", "MAPA", "CARTE", "MAPPA", "MAP")), gText_MenuPokemon, gText_MenuBag, s->name, gText_MenuPokedex, gText_MenuPokenav,
         gText_MenuSave, gText_MenuOption,
     };
     const Icon *icon = &sRes.column[i];
@@ -3594,8 +3659,8 @@ static void DrawRegionName(const ViewState *s)
 static void DrawMapClock(const ViewState *s)
 {
     static const char *const phases[] = {
-        CTR_TEXT("MORNING", "MAÑANA", "MATIN", "MATTINA"), CTR_TEXT("DAY", "DÍA", "JOUR", "GIORNO"),
-        CTR_TEXT("EVENING", "TARDE", "SOIR", "SERA"), CTR_TEXT("NIGHT", "NOCHE", "NUIT", "NOTTE")
+        CTR_TEXT("MORNING", "MAÑANA", "MATIN", "MATTINA", "MORNING"), CTR_TEXT("DAY", "DÍA", "JOUR", "GIORNO", "DAY"),
+        CTR_TEXT("EVENING", "TARDE", "SOIR", "SERA", "EVENING"), CTR_TEXT("NIGHT", "NOCHE", "NUIT", "NOTTE", "NIGHT")
     };
     char time[8], speed[8];
     int top = CLOCK_Y, bottom = CLOCK_Y + CLOCK_H;
@@ -3835,8 +3900,19 @@ static void DrawTrainerCard(const ViewState *s)
     DrawStr(&sNormal, text, bx + 120 + (96 - StrWidth(&sNormal, text)) / 2, by + 9, TXT_DARK, TXT_LIGHT);
 
     DrawStr(&sNormal, gText_TrainerCardMoney, bx + 16, by + 57, TXT_DARK, TXT_LIGHT);
+#if GAME_LANGUAGE == LANGUAGE_JAPANESE
+    /* As the Japanese gText_PokedollarVar1: the amount, then 円 (the
+     * Japanese set's CHAR_CURRENCY). */
+    {
+        u8 *end = StringCopy(text, Number(s->money, 6, STR_CONV_MODE_LEFT_ALIGN));
+
+        end[0] = CHAR_CURRENCY;
+        end[1] = EOS;
+    }
+#else
     text[0] = CHAR_CURRENCY;
     StringCopy(text + 1, Number(s->money, 6, STR_CONV_MODE_LEFT_ALIGN));
+#endif
     DrawStrRight(&sNormal, text, bx + 128, by + 57, TXT_DARK, TXT_LIGHT);
 
     if (s->hasDex)
@@ -3891,9 +3967,13 @@ static const u8 *OptionValue(int row, u8 value)
         /* Percentages; the blur's strength is OFF at 0 (the zoom never is). */
         if (value == 0)
             return gText_BattleSceneOff;
-        StringCopy(frame, Number(value, 3, STR_CONV_MODE_LEFT_ALIGN));
-        frame[StringLength(frame) + 1] = EOS;
-        frame[StringLength(frame)] = CHAR_PERCENT;
+        {
+            char percent[8];
+
+            /* '%' is the Latin set's only: a label (CtrLocale_ToGame). */
+            snprintf(percent, sizeof(percent), "%d%%", value);
+            CtrLocale_ToGame(frame, sizeof(frame), percent);
+        }
         return frame;
     default:
         StringCopy(frame, gText_FrameType);
@@ -3947,8 +4027,9 @@ static void DrawWindowFrame(u8 type, int x, int y, int wt, int ht, u16 fill)
 static int StrLines(const u8 *str)
 {
     int lines = 1;
+    bool8 japanese = CTR_LOCALE_JAPANESE_FIRST;
 
-    for (u16 g; (g = NextGlyph(&str)) != 0xFFFF;)
+    for (u16 g; (g = NextGlyph(&str, &japanese)) != 0xFFFF;)
         if (g == 0xFFFE)
             ++lines;
     return lines;
@@ -4066,7 +4147,7 @@ static void DrawSave(const ViewState *s)
 
     DrawSaveFile(s);
     if (s->saveStep == SAVE_DONE)
-        DrawSavePlate(64, 112, Ascii(CTR_TEXT("OK", "VALE", "OK", "OK")), TRUE, s->pressed == HIT_OK, TRUE, HIT_OK);
+        DrawSavePlate(64, 112, Ascii(CTR_TEXT("OK", "VALE", "OK", "OK", "OK")), TRUE, s->pressed == HIT_OK, TRUE, HIT_OK);
     else
     {
         DrawSavePlate(10, 106, gText_Yes, TRUE, s->pressed == HIT_YES, s->canSave, HIT_YES);
@@ -4178,8 +4259,9 @@ static bool8 FitsCell(const u8 *str)
 /* All a cell is drawn from (see CELL_PICS): its key in the picture cache. */
 static u32 CellKey(int x, int y, const u8 *name, const u8 *value, bool8 live, bool8 on, bool8 arrows)
 {
-    return Mix(Mix(Mix(Mix(Mix(Mix(Mix(Mix(MixStr(MixStr(0x811C9DC5u, name), value), x), y), sOX), live), on),
-                       arrows), (u32)(uintptr_t)sSmall.glyphs), (u32)(uintptr_t)sCache[CACHE_MENU]);
+    return Mix(Mix(Mix(Mix(Mix(Mix(Mix(Mix(Mix(MixStr(MixStr(0x811C9DC5u, name), value), x), y), sOX), live), on),
+                           arrows), (u32)(uintptr_t)sSmall.glyphs), (u32)(uintptr_t)sSmall.japanese),
+               (u32)(uintptr_t)sCache[CACHE_MENU]);
 }
 
 /* Whether a cell's picture may be kept at all, wherever it is drawn. */
@@ -4233,7 +4315,8 @@ static void DrawCellPlate(int x, int y, const u8 *name, const u8 *value, bool8 l
 
 static void DrawCellPlateBody(int x, int y, const u8 *name, const u8 *value, bool8 live, bool8 on, bool8 arrows)
 {
-    static const u8 left[] = {CHAR_LEFT_ARROW, EOS}, right[] = {CHAR_RIGHT_ARROW, EOS};
+    static const u8 left[] = {CTR_LOCALE_LATIN_START CHAR_LEFT_ARROW, EOS};
+    static const u8 right[] = {CTR_LOCALE_LATIN_START CHAR_RIGHT_ARROW, EOS};
     u16 nameFg = !live ? sLook.offText : on ? TXT_WHITE : TXT_DARK;
     u16 nameSh = !live ? sLook.offShadow : on ? sLook.chosenShadow : TXT_LIGHT;
     u16 valueFg = !live ? sLook.offText : on ? TXT_WHITE : TXT_RED;
@@ -4257,7 +4340,8 @@ static void DrawCellPlateBody(int x, int y, const u8 *name, const u8 *value, boo
 
 static void DrawOptionCell(const ViewState *s, int row, const u8 *name, bool8 voxel)
 {
-    static const u8 left[] = {CHAR_LEFT_ARROW, EOS}, right[] = {CHAR_RIGHT_ARROW, EOS};
+    static const u8 left[] = {CTR_LOCALE_LATIN_START CHAR_LEFT_ARROW, EOS};
+    static const u8 right[] = {CTR_LOCALE_LATIN_START CHAR_RIGHT_ARROW, EOS};
     const u8 *value = OptionValue(row, s->options[row]);
     bool8 live = OptionLive(row, voxel);
     bool8 on = live && (s->pressed == HIT_OPTION + row || s->pressed == HIT_OPTION + HIT_OPTION_BACK + row);
@@ -4316,7 +4400,7 @@ static void DrawExtraCell(const ViewState *s, int row, const CtrExtra *extra, bo
 /* The tabs: SETTINGS (the options) and each page that has extras. */
 static void DrawOptionTabs(const ViewState *s)
 {
-    static const char *const names[CTR_EXTRAS_PAGES] = {CTR_TEXT("SETTINGS", "AJUSTES", "RÉGLAGES", "OPZIONI"), CTR_TEXT("ENHANCEMENTS", "MEJORAS", "AMÉLIOR.", "MIGLIORIE"), CTR_TEXT("CHEATS", "TRUCOS", "ASTUCES", "TRUCCHI")};
+    static const char *const names[CTR_EXTRAS_PAGES] = {CTR_TEXT("SETTINGS", "AJUSTES", "RÉGLAGES", "OPZIONI", "SETTINGS"), CTR_TEXT("ENHANCEMENTS", "MEJORAS", "AMÉLIOR.", "MIGLIORIE", "ENHANCEMENTS"), CTR_TEXT("CHEATS", "TRUCOS", "ASTUCES", "TRUCCHI", "CHEATS")};
     u8 pages[CTR_EXTRAS_PAGES], count = 0;
     int capTop, capBottom, cap, widths[CTR_EXTRAS_PAGES], need = 0, x = 4;
     bool8 fit = TRUE;
@@ -4334,7 +4418,7 @@ static void DrawOptionTabs(const ViewState *s)
      */
     for (unsigned i = 0; i < count; ++i)
     {
-        char label[24];
+        char label[48];   /* UTF-8: three bytes a kana */
 
         if (PageSubs(pages[i]) > 1)
             snprintf(label, sizeof(label), "%s %u/%u", names[pages[i]], PageSubs(pages[i]), PageSubs(pages[i]));
@@ -4359,7 +4443,7 @@ static void DrawOptionTabs(const ViewState *s)
         int line = TAB_Y + 1 + (TAB_H - 4 - cap) / 2 + pressed;
 
         DrawPlate(x0, TAB_Y, x1 - x0, TAB_H, chosen ? &sLook.chosen : &sLook.plate, 0, pressed);
-        char label[24];
+        char label[48];
 
         /* "CHEATS 1/2" on a page shown twelve at a time. */
         if (chosen && PageSubs(pages[i]) > 1)
@@ -4377,9 +4461,9 @@ static void OptionNames(const u8 *names[OPTION_ROWS])
 {
     const u8 *const table[OPTION_ROWS] = {
         gText_TextSpeed, gText_BattleScene, gText_BattleStyle, gText_Sound,
-        gText_ButtonMode, gText_Frame, Ascii(CTR_TEXT("SHOW FPS", "MOSTRAR FPS", "AFFICH. FPS", "MOSTRA FPS")), Ascii("VOXEL 3D"),
-        Ascii(CTR_TEXT("3D ANGLE", "ÁNGULO 3D", "ANGLE 3D", "ANGOLO 3D")), Ascii(CTR_TEXT("3D ZOOM", "ZOOM 3D", "ZOOM 3D", "ZOOM 3D")),
-        Ascii(CTR_TEXT("3D BLUR", "DESENFOQUE 3D", "FLOU 3D", "SFOC. 3D")), Ascii(CTR_TEXT("3D BATTLE", "COMBATE 3D", "COMBAT 3D", "BATTAGLIA 3D"))};
+        gText_ButtonMode, gText_Frame, Ascii(CTR_TEXT("SHOW FPS", "MOSTRAR FPS", "AFFICH. FPS", "MOSTRA FPS", "SHOW FPS")), Ascii("VOXEL 3D"),
+        Ascii(CTR_TEXT("3D ANGLE", "ÁNGULO 3D", "ANGLE 3D", "ANGOLO 3D", "3D ANGLE")), Ascii(CTR_TEXT("3D ZOOM", "ZOOM 3D", "ZOOM 3D", "ZOOM 3D", "3D ZOOM")),
+        Ascii(CTR_TEXT("3D BLUR", "DESENFOQUE 3D", "FLOU 3D", "SFOC. 3D", "3D BLUR")), Ascii(CTR_TEXT("3D BATTLE", "COMBATE 3D", "COMBAT 3D", "BATTAGLIA 3D", "3D BATTLE"))};
 
     memcpy(names, table, sizeof(table));
 }
@@ -5073,11 +5157,11 @@ static void MoveBody(const ViewState *s, int i)
     PpColours(s->moves4.currentPp[i], s->moves4.maxPp[i], &fg, &sh);
     DrawStrRight(&sNormal, text, x + MOVE_W - 12, oy + 32, fg, sh);
     {
-        int tx = DrawStr(&sSmall, Ascii(CTR_TEXT("POW ", "POT. ", "PUISS. ", "POT. ")), x + 12, oy + 56, TXT_DARK, TXT_LIGHT);
+        int tx = DrawStr(&sSmall, Ascii(CTR_TEXT("POW ", "POT. ", "PUISS. ", "POT. ", "POW ")), x + 12, oy + 56, TXT_DARK, TXT_LIGHT);
 
         DrawStr(&sSmall, data->power > 1 ? Number(data->power, 3, STR_CONV_MODE_LEFT_ALIGN) : Ascii("---"), tx,
                 oy + 56, TXT_DARK, TXT_LIGHT);
-        StringCopy(text, Ascii(CTR_TEXT("ACC ", "PREC. ", "PRÉC. ", "PREC. ")));
+        StringCopy(text, Ascii(CTR_TEXT("ACC ", "PREC. ", "PRÉC. ", "PREC. ", "ACC ")));
         StringAppend(text, data->accuracy ? Number(data->accuracy, 3, STR_CONV_MODE_LEFT_ALIGN) : Ascii("---"));
         DrawStrRight(&sSmall, text, x + MOVE_W - 12, oy + 56, TXT_DARK, TXT_LIGHT);
     }
@@ -5118,7 +5202,9 @@ static void DrawBattleMoves(const ViewState *s)
 /* Left and right move the game's target cursor; OK is what A does. */
 static void DrawBattleTarget(const ViewState *s)
 {
-    static const u8 left[] = {CHAR_LEFT_ARROW, EOS}, right[] = {CHAR_RIGHT_ARROW, EOS}, ok[] = {CHAR_O, CHAR_K, EOS};
+    static const u8 left[] = {CTR_LOCALE_LATIN_START CHAR_LEFT_ARROW, EOS};
+    static const u8 right[] = {CTR_LOCALE_LATIN_START CHAR_RIGHT_ARROW, EOS};
+    static const u8 ok[] = {CTR_LOCALE_LATIN_START CHAR_O, CHAR_K, EOS};
     const struct { s16 x, y; Rgb hue; const u8 *label; u8 hit; } plates[4] = {
         {6, ACT_Y, sHueRun, left, HIT_TARGET_LEFT},
         {164, ACT_Y, sHueRun, right, HIT_TARGET_RIGHT},

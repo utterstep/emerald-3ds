@@ -85,6 +85,9 @@ check every production route rule, its pinned species, levels/rates and
 original fallbacks under ASan/UBSan. Use `--tree build/upstream-es` for Spanish.
 `python3 3ds_port/tests/bottom_map_test.py` compares partial/full map redraws,
 including the clock footer, midnight, toggles and location changes.
+`python3 3ds_port/tests/glyph_sets_test.py` checks that the bottom screen and
+the battle's info boxes draw a string in the Latin or the Japanese glyphs as
+its build and its JPN/ENG control codes say, from the tiles the game reads.
 `python3 3ds_port/tests/voxel_night_test.py --cc clang` checks authored window
 masks and the real VXB7/VXB8 readers without a bootstrapped tree (Pillow is
 required). Add `--assets build/upstream/3ds_port/romfs/voxel/buildings.bin`
