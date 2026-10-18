@@ -13,7 +13,7 @@ a tree with this patch (it looks for TITLE_VERSION_PAL_JAPANESE).
          LoadCompressedSpriteSheet(&sSpriteSheet_EmeraldVersion[0]);
          LoadCompressedSpriteSheet(&sSpriteSheet_PressStart[0]);
          LoadCompressedSpriteSheet(&sPokemonLogoShineSpriteSheet[0]);
-+#if defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
 +        // TITLE_VERSION_PAL_JAPANESE: the Japanese version logo uses colours of the
 +        // nine title palettes, which the Japanese ROM loads into the nine reserved
 +        // OBJ palettes; emerald_version.gbapal holds those nine.
