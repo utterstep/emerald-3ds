@@ -64,6 +64,11 @@ def stage(tree: Path, rom_path: Path) -> None:
                 replacement = "{" + encoded(data) + "}"
             elif kind == "asm":
                 replacement = "\n\t.byte " + encoded(data) + "\n"
+                # The manifest's braille ranges leave out the 6-byte brailleformat header,
+                # which ScrCmd_braillemessage skips over: keep the source's header line.
+                header = re.match(r"brailleformat\s+([^\n]+)", text[start:end])
+                if header and data[:6] != bytes(int(n, 0) for n in header.group(1).split(",")):
+                    replacement = header.group(0) + replacement
             elif kind == "u32":
                 replacement = str(struct.unpack("<I", data)[0])
             elif kind == "u16s":
