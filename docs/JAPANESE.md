@@ -2,10 +2,10 @@
 
 **Status: experimental, not tested on a console.** `tools/localize_japanese.py`
 stages the Japanese game data from the player's ROM: texts, graphics, credits,
-the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061 and 0070–0073 make
-a Japanese build behave like the Japanese game, and `tools/bootstrap.py`, the
-builders, the web builder and the release scripts accept that ROM ([Building
-the Japanese game](#building-the-japanese-game)). Some screens and features are
+the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061, 0063, 0064, 0066
+and 0070–0073 make a Japanese build behave like the Japanese game, and
+`tools/bootstrap.py`, the builders, the web builder and the release scripts
+accept that ROM ([Building the Japanese game](#building-the-japanese-game)). Some screens and features are
 still open ([Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)).
 This page describes what the manifest covers, how it was made and checked, how
 to build the game and what is left.
@@ -244,8 +244,24 @@ logo palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI
    the time board lists each floor's two trainers above the clear time, as that
    ROM does. The e-Reader challenges that ROM can also load are not supported (the
    port cannot scan cards); the time board's window keeps the international width
-   (26 tiles; the Japanese one is 27, its text fits in both). Open: the bard and
-   the credits' scene pages.
+   (26 tiles; the Japanese one is 27, its text fits in both). Open, as read in
+   that ROM's code:
+   - *The bard.* Its song task walks the printed lyrics one character at a
+     time. A table indexed by character code (0x5d2b4c, `{s16 song, u16
+     volume}`) gives each kana one of the sounds SE_A–SE_O and SE_N (25–30,
+     still in the decomp's song table), っ and punctuation a rest, ー and ⋯ a
+     held note; each note lasts 16 frames, and its pitch is the next value of
+     the `sPitchTables` row chosen by the word's length in kana and its Easy
+     Chat id (`(word & 3) + ((word >> 3) & 1)`). Spaces, line breaks and
+     control codes pause. The decomp's per-word phoneme templates
+     (`src/data/bard_music/`, `BardSing`) have no counterpart there. Doing it
+     means a Japanese song task and staging that table; the Japanese build
+     sings with the international code.
+   - *The credits' scene pages.* That ROM's `CheckChangeScene` changes scenes
+     at pages 5, 9, 14, 20, 25, 30, 37 and 42 and also cues the bike scenes at
+     pages 1, 22 and 35, where the decomp uses frame timers, and its Pokémon
+     interludes show 56 Pokémon, one every 64 frames (71 every 50 frames in the
+     decomp). The Japanese build keeps the decomp's spacing (pages 5, 10, …, 40).
 6. **Screens with another layout:** the graphics listed above.
 7. **Port additions** that need their own Japanese text (*done*, 0066): the
    Exp. Share team message, てもちの　ほかの　ポケモンも／けいけんちを　もらった！
