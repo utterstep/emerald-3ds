@@ -123,7 +123,7 @@ def main() -> int:
             import gzip
             import json
             manifest_name = {"BPEF": "french.json.gz", "BPES": "spanish.json.gz",
-                             "BPEI": "italian.json.gz"}.get(previous_name.split()[0]
+                             "BPEI": "italian.json.gz", "BPEJ": "japanese.json.gz"}.get(previous_name.split()[0]
                                                            if previous_name else "", "spanish.json.gz")
             manifest = json.loads(gzip.decompress((ROOT / "tools/locales" / manifest_name).read_bytes()))
             for relative, _, _ in manifest["graphics"]:
