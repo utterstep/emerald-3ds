@@ -222,13 +222,16 @@ python tools/bootstrap.py --make # also builds the 3DSX there
 python tools/bootstrap.py --make --spanish-rom esmeralda.gba  # Spanish build
 python tools/bootstrap.py --make --french-rom emeraude.gba    # French build
 python tools/bootstrap.py --make --italian-rom smeraldo.gba   # Italian build
+python tools/bootstrap.py --make --japanese-rom emerald-jp.gba # Japanese build (draft)
 ```
 
 The Spanish, French and Italian builds take their texts and graphics from your own
 clean Spanish (BPES), French (BPEF) or Italian (BPEI) ROM; see
 [Pokémon Esmeralda en español](docs/SPANISH.md),
 [Pokémon Émeraude en français](docs/FRENCH.md) and
-[Pokémon Smeraldo in italiano](docs/ITALIAN.md).
+[Pokémon Smeraldo in italiano](docs/ITALIAN.md). The Japanese build, from a
+clean Pocket Monsters Emerald (BPEJ) ROM, is a draft: see
+[docs/JAPANESE.md](docs/JAPANESE.md).
 
 Start with the [development guide](docs/DEVELOPMENT.md) for requirements,
 the development loop, loose data, data packs and host tests.

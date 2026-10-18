@@ -25,6 +25,25 @@ clones pret/pokeemerald at the commit pinned in `upstream.lock` into
 decomp tools and the 3DSX there (`--jobs N`). Re-running it refreshes the
 port files without touching the upstream checkout unless `--clean` is given.
 
+### Other languages
+
+A tree builds the game in one language, from that language's clean ROM:
+
+```
+python tools/bootstrap.py --make --spanish-rom esmeralda.gba    # docs/SPANISH.md
+python tools/bootstrap.py --make --french-rom emeraude.gba      # docs/FRENCH.md
+python tools/bootstrap.py --make --italian-rom smeraldo.gba     # docs/ITALIAN.md
+python tools/bootstrap.py --make --japanese-rom emerald-jp.gba  # docs/JAPANESE.md
+```
+
+Each run with a ROM option resets the tree to the pinned commit, applies the
+patches, stages that language's data from the ROM after the generated includes
+(`tools/localize_<language>.py --tree TREE --rom ROM`) and builds it. A run
+without one goes back to English; any change of language deletes
+`3ds_port/build`, `3ds_port/romfs` and the other language's staged art. Then
+`make release pak` in `build/upstream/3ds_port` gives that language's
+executable and data pack (*Testing on the console* below).
+
 ## Building
 
 From `build/upstream/3ds_port` (devkitPro's shell on Windows, or `build.ps1`):

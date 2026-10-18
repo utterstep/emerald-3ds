@@ -144,6 +144,43 @@ class TextTests(unittest.TestCase):
         with self.assertRaises(followers.FollowersError):
             followers.convert_texts(corpus(messages, bank=1))
 
+    def test_japanese_kana(self):
+        text = "やあ？\\n[VAR 0101(0000)]が　ねむい……\\cポケモン！[VAR 0200(0000)]"
+        self.assertEqual(followers.encode_message(text, "ja"), bytes((
+            0x24, 0x01, 0xAC, 0x00, 0xFD, 0x02, 0x37, 0x00, 0x18, 0x21, 0x02, 0xB0, 0xB0, 0xFB,
+            0x9F, 0x59, 0x73, 0x7E, 0xAB, 0xFF)))
+        # full-width Latin: the Latin codes; no kanji, no Latin accents in the Japanese set
+        self.assertEqual(followers.encode_message("ＤＳ２", "ja"), bytes((0xBB + 3, 0xBB + 18, 0xA3, 0xFF)))
+        self.assertEqual(followers.encode_message("漢é", "ja"), b"\xAC\xAC\xFF")
+        self.assertEqual(followers.encode_message("　　ぁ　　ッ　", "ja"), b"\x2F\x00\xA0\xFF")
+        # the other languages keep their Latin set
+        self.assertEqual(followers.encode_message("é", "fr"), b"\x1B\xFF")
+        self.assertEqual(followers.encode_message("あ"), b"\xAC\xFF")
+
+    def test_japanese_charmap(self):
+        """The kana table is charmap.txt's Japanese section, where a tree is at hand."""
+        import re
+        for path in (ROOT / "charmap.txt", ROOT / "build" / "upstream" / "charmap.txt"):
+            if path.is_file():
+                break
+        else:
+            self.skipTest("no bootstrapped tree")
+        charmap = path.read_text(encoding="utf-8")
+        section = charmap[charmap.index("@ Hiragana"):charmap.index("STRING = FD")]
+        pairs = re.findall(r"^'(.)'\s*=\s*([0-9A-F]{2})$", section, re.M)
+        self.assertEqual(len(pairs), 166)
+        for char, code in pairs:
+            self.assertEqual(followers.encode_message(char, "ja"),
+                             bytes((int(code, 16),)) + b"\xFF" if code != "00" else b"\xFF", char)
+
+    def test_japanese_bank(self):
+        messages = ["あ%d" % i for i in range(followers.TEXT_COUNT)]
+        out = followers.convert_texts(corpus(messages, bank=258), 258, "ja")
+        first, second = struct.unpack_from("<2I", out, 8)
+        self.assertEqual(out[first:second], b"\x01\xA1\xFF")
+        with self.assertRaises(followers.FollowersError):
+            followers.convert_texts(corpus(messages, bank=258))
+
 
 class FetchTests(unittest.TestCase):
     def setUp(self):
@@ -224,6 +261,20 @@ class FetchTests(unittest.TestCase):
         self.assertIn("followers/text/en.bin", out)
         self.assertEqual(info["missing"], ["text_fr"])
 
+    def test_japanese_text_from_its_own_bank(self):
+        files = dict(self.files)
+        files["corpus/ja_msg.txt"] = (corpus(["ポケモン"] * followers.TEXT_COUNT, bank=258).encode("utf-8"), None)
+        sources = sources_for(files)
+        entry = next(e for e in sources["files"] if e["path"] == "corpus/ja_msg.txt")
+        entry["language"], entry["bank"] = "ja", 258
+        fetch, _ = self.network({p: d for p, (d, _) in files.items()})
+        out, info = followers.build_section(followers.Fetcher(sources, fetch=fetch, workers=1), languages=["ja"])
+        text = out["followers/text/ja.bin"]
+        first, second = struct.unpack_from("<2I", text, 8)
+        self.assertEqual(text[first:second], b"\x9F\x59\x73\x7E\xFF")
+        self.assertEqual((info["texts"], info["missing"]), (1, []))
+        self.assertIn("followers/text/ja.bin", followers.pack_paths(sources))
+
 
 class PinnedListTests(unittest.TestCase):
     def test_pinned_list(self):
@@ -235,7 +286,10 @@ class PinnedListTests(unittest.TestCase):
         self.assertTrue({"%03d" % d for d in range(1, 387)} <= keys)
         self.assertEqual(len([k for k in keys if k.endswith("_f")]), 6)
         self.assertEqual(len([k for k in keys if k.startswith("201_")]), 27)
-        self.assertEqual(sorted(e["language"] for e in followers.text_files(sources)), ["en", "es", "fr", "it"])
+        self.assertEqual(sorted(e["language"] for e in followers.text_files(sources)), ["en", "es", "fr", "it", "ja"])
+        japanese = next(e for e in followers.text_files(sources) if e["language"] == "ja")
+        self.assertEqual((japanese["path"], japanese["bank"]), ("corpus/HeartGoldSoulSilver/ja-Hrkt_msg.txt", 258))
+        self.assertEqual(followers.ROM_LANGUAGES["J"], "ja")
         for e in sources["files"]:
             self.assertEqual(len(e["sha256"]), 64)
             self.assertIn(e["source"], sources["sources"])

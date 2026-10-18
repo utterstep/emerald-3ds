@@ -13,7 +13,7 @@ spec.loader.exec_module(staging)
 class StagingRomProfileTests(unittest.TestCase):
     def test_pack_fingerprint_matches_compiled_language(self):
         for language, code in (("ENGLISH", "BPEE"), ("SPANISH", "BPES"),
-                               ("FRENCH", "BPEF"), ("ITALIAN", "BPEI")):
+                               ("FRENCH", "BPEF"), ("ITALIAN", "BPEI"), ("JAPANESE", "BPEJ")):
             with self.subTest(language=language), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
                 romfs = folder / "romfs"

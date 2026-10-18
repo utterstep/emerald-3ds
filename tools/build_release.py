@@ -9,15 +9,16 @@ Steps (each can be skipped when its output is already there):
 1. `make release` in 3ds_port: dist/Emerald3DS.3dsx and .smdh, engine files only;
 2. the recipe (tools/gen_recipe.py) from the build's staging and the ROM;
 3. the payload: executable, recipe and the voxel generator scripts; with
-   --spanish-rom / --french-rom / --italian-rom also payload/es/ (resp. payload/fr/, payload/it/), that
-   language's executable and its recipe,
-   built from a copy of this tree localized from that ROM (build/release-es);
+   --spanish-rom / --french-rom / --italian-rom / --japanese-rom also
+   payload/es/ (resp. payload/fr/, payload/it/, payload/ja/), that language's
+   executable and its recipe, built from a copy of this tree localized from
+   that ROM (build/release-es);
 4. the standalone builder (PyInstaller, one folder, no UPX);
 5. dist/Emerald3DS-v<version>-Windows.zip with the builder, the payload,
    README.txt and LICENSES/;
 6. the standalone dist/Emerald3DS.3dsx and dist/Emerald3DS.smdh (quick update
    of the executable when the data ABI did not change; dist/Emerald3DS-es.3dsx
-   for the Spanish variant), and the HOME Menu
+   for the Spanish variant, -fr, -it and -ja for the others), and the HOME Menu
    forwarder dist/Emerald3DS-Forwarder.cia (3ds_port/forwarder, needs makerom
    and bannertool; --skip-cia leaves it out);
 7. dist/Emerald3DS-WebPayload.zip and dist/web-manifest.json for the web
@@ -54,6 +55,8 @@ CIA_NAME = "Emerald3DS-Forwarder.cia"
 GENERATORS = ["gen_voxel_regions.py", "gen_voxel_sign_masks.py",
               "gen_voxel_relief.py", "gen_voxel_buildings.py", "gen_intro_margins.py"]
 VOXELGEN_FILES = ["src/voxel/voxel_regions.h", "assets/voxel/relief_fixes.json"]
+# --<language>-rom: its payload/ subfolder (and release asset suffix), in this order.
+LOCALES = (("spanish", "es"), ("french", "fr"), ("italian", "it"), ("japanese", "ja"))
 
 
 def run(cmd, cwd=None, env=None):
@@ -94,6 +97,14 @@ def build_localized_variant(args, tag: str, out: Path, locale: dict) -> None:
     by tools/localize_<language>.py, then built and covered like the English one."""
     tree = ROOT / "build" / ("release-" + locale["code"])
     make = args.make.split() if args.make else ["make"]
+    # The localized game's symbol names and addresses (no ROM contents), for the recipe's hints.
+    symbols = tree / "build" / (locale["stem"] + "-reference.s")
+
+    def need_symbols() -> None:
+        if not symbols.is_file():
+            sys.exit("build_release: %s staged no build/%s (from tools/locales/%s-symbols.s.gz): the "
+                     "%s recipe needs that ROM's symbol addresses"
+                     % (locale["script"], symbols.name, locale["stem"], locale["code"]))
     if not args.skip_make:
         if tree.exists():
             shutil.rmtree(tree)
@@ -108,13 +119,13 @@ def build_localized_variant(args, tag: str, out: Path, locale: dict) -> None:
         run(make + ["tools"], cwd=tree)
         run(make + ["generated"], cwd=tree)
         run([sys.executable, ROOT / "tools" / locale["script"], "--tree", tree, "--rom", locale["rom"]])
+        need_symbols()  # before the long build
         run(make + ["release"], cwd=tree / "3ds_port")
     port = tree / "3ds_port"
-    # The localized game's symbol names and addresses (no ROM contents), for the recipe's hints.
     reference = tree / "build" / (locale["stem"] + "-reference.o")
+    need_symbols()
     assembler = Path(args.nm).with_name(Path(args.nm).name[:-2] + "as")  # arm-none-eabi-nm -> -as
-    run([assembler, "-o", reference,
-         tree / "build" / (locale["stem"] + "-reference.s")])
+    run([assembler, "-o", reference, symbols])
     recipe = DIST / ("emerald3ds-%s.recipe" % locale["code"])
     if not args.skip_recipe:
         run([sys.executable, ROOT / "tools/gen_recipe.py", "--romfs", port / "romfs", "--rom", locale["rom"],
@@ -126,6 +137,14 @@ def build_localized_variant(args, tag: str, out: Path, locale: dict) -> None:
     for name in ("Emerald3DS.3dsx", "Emerald3DS.smdh"):
         shutil.copy2(port / "dist" / name, out / name)
     shutil.copy2(recipe, out / "emerald3ds.recipe")
+
+
+def chosen_locales(args) -> list[dict]:
+    """The localized variants the command line asks for: each is built by
+    tools/localize_<language>.py from that ROM, with build/<language>-reference.s."""
+    return [{"code": code, "stem": stem, "rom": getattr(args, stem + "_rom"),
+             "script": "localize_%s.py" % stem}
+            for stem, code in LOCALES if getattr(args, stem + "_rom", None)]
 
 
 def sha256(path: Path) -> str:
@@ -147,6 +166,8 @@ def main() -> None:
                     help="clean French (BPEF) ROM: also build the French variant (payload/fr/)")
     ap.add_argument("--italian-rom", type=Path, default=None,
                     help="clean Italian (BPEI) ROM: also build the Italian variant (payload/it/)")
+    ap.add_argument("--japanese-rom", type=Path, default=None,
+                    help="clean Japanese (BPEJ) ROM: also build the Japanese variant (payload/ja/)")
     ap.add_argument("--nm", default=os.environ.get("NM", "arm-none-eabi-nm"))
     ap.add_argument("--make", default=None, help="command that runs make in 3ds_port (default: make)")
     ap.add_argument("--skip-make", action="store_true")
@@ -202,16 +223,7 @@ def main() -> None:
         dst = payload / "voxelgen" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(PORT / rel, dst)
-    locales = []
-    if args.spanish_rom:
-        locales.append({"code": "es", "stem": "spanish", "rom": args.spanish_rom,
-                        "script": "localize_spanish.py"})
-    if args.french_rom:
-        locales.append({"code": "fr", "stem": "french", "rom": args.french_rom,
-                        "script": "localize_french.py"})
-    if args.italian_rom:
-        locales.append({"code": "it", "stem": "italian", "rom": args.italian_rom,
-                        "script": "localize_italian.py"})
+    locales = chosen_locales(args)
     for locale in locales:
         build_localized_variant(args, tag, payload / locale["code"], locale)
 
