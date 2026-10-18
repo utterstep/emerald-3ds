@@ -2,11 +2,11 @@
 
 **Status: experimental, not tested on a console.** `tools/localize_japanese.py`
 stages the Japanese game data from the player's ROM: texts, graphics, credits,
-the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061 and 0070–0073 make
-a Japanese build behave like the Japanese game, and `tools/bootstrap.py`, the
-builders, the web builder and the release scripts accept that ROM ([Building
-the Japanese game](#building-the-japanese-game)). Some screens and features are
-still open ([Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)).
+the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061, 0070–0073 and
+0083 make a Japanese build behave like the Japanese game, and
+`tools/bootstrap.py`, the builders, the web builder and the release scripts
+accept that ROM ([Building the Japanese game](#building-the-japanese-game)).
+Some screens and features are still open ([Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)).
 This page describes what the manifest covers, how it was made and checked, how
 to build the game and what is left.
 
@@ -43,44 +43,73 @@ Conventions that differ from the Italian manifest:
 
 ### Graphics
 
-The Italian manifest stages 104 graphics. Their Japanese counterparts:
+The English build includes 7,873 graphics files (`graphics/` and
+`data/tilesets/`: tiles, tilemaps, palettes, fonts, as built, which are the
+English ROM's bytes). 7,662 of them have an identical copy in the Japanese ROM.
+The other 211:
 
-| Italian graphics | Count |
+| English graphics that differ in Japanese | Count |
 |---|---|
-| Japanese asset identical to the English one (staged anyway) | 19 |
-| Same size and layout, staged | 45 |
-| Staged with a code patch of this repository (0071–0073) | 15 |
-| Another size or layout: need code, stay English (`graphics_layout_differs`) | 19 |
-| No Japanese counterpart (`graphics_skipped`) | 6 |
+| Same size and layout, staged | 78 |
+| Staged with a code patch of this repository (0071–0073, 0083) | 19 |
+| Another size or layout: need code, stay English (`graphics_layout_differs`) | 76 |
+| No Japanese counterpart: the five Latin fonts and `berry_fix/text.gbapal` (`graphics_skipped`) | 6 |
+| No Japanese counterpart: the Trainer Hill mode floors' maps (`floors_skipped`) | 32 |
 
-Staged in addition, as the Japanese game has them: `fonts/normal.hwjpnfont` (every
-glyph one pixel row higher than the decomp's copy) and `fonts/short.fwjpnfont`
-(one glyph differs), and the tilemaps `pokeblock/menu.bin.lz` and
-`trade/menu.bin`, which go with the staged Japanese tiles. 83 graphics are staged
-in all, 56 of them LZ77 streams that staging also decompresses.
+Staging also writes 19 graphics that are identical in both ROMs (chosen from
+the Italian manifest's list before this inventory), 116 in all, 74 of them
+LZ77 streams that staging also decompresses. Among them are
+`fonts/normal.hwjpnfont` (every glyph one pixel row higher than the decomp's
+copy), `fonts/short.fwjpnfont` (one glyph differs) and
+`fonts/braille.fwjpnfont` (the Japanese braille cells for the kana codes the
+staged braille texts use). The port's `italian_the_end.bin.lz` is skipped too:
+the Japanese credits draw "THE END" from the same letter maps and tiles as the
+English game.
 
-Skipped: the five Latin fonts (the Japanese ROM has none; it prints with the
-Japanese fonts) and the port's `italian_the_end.bin.lz` (the Japanese credits
-draw "THE END" from the same letter maps and tiles as the English game, so no
-ending tilemap is needed).
+The title screen (patch 0083) has the Japanese logo: 22x7 tiles in five
+palettes (the English one 14), an affine map of 32x9 entries, 16 pixels from
+the left edge instead of 29, sliding left as well as up; the clouds' map uses
+palette 5. The version banner (0073, 0083) comes down to y 48 at x 162 and
+210, its right half a 32x32 sprite.
 
 Graphics that need code, with what differs:
 
 - `battle_frontier/tourney_buttons`: the sprite sheet is 0x400 bytes, not 0x600;
 - `contest/nextturn`: the four sprite sheets are 0xA0 bytes, not 0x100;
-- `summary_screen/tiles` and the page tilemaps: 217 tiles instead of 240, laid out
-  differently from tile 96 on (where the code takes its EXP and HP bar tiles);
-- `pokedex/menu`: another tile layout, every Pokédex screen tilemap differs, and
-  the window positions are in code;
-- `pokenav/condition/graph` and `pokeblock/use_screen/graph`: 3872 and 4000 bytes
-  instead of 6656, with other tilemaps;
-- `naming_screen/page_swap_*` and `union_room_chat/*`: they belong to the kana
-  keyboards; two page labels are 0x40 bytes instead of 0x60, the chat background
-  has 38 tiles instead of 39;
+- `summary_screen/tiles` and its page tilemaps (`page_*`, `effect_*`): 217
+  tiles instead of 240, laid out differently from tile 96 on (where the code
+  takes its EXP and HP bar tiles); the two move-effect windows are 9x7 cells one
+  column right, not 10x7, and the narrower move selector (`move_select`) is
+  placed by code;
+- `pokedex/menu`: another tile layout, every Pokédex screen tilemap differs
+  (`start_menu_*`, `list*`, `info_screen`, `cry_screen`, `size_screen`,
+  `screen_select_bar_*`), and the window positions are in code;
+- `pokenav/condition/graph` and `pokeblock/use_screen/graph` (with their
+  tilemaps and `nature.gbapal`): 3872 and 4000 bytes instead of 6656;
+- `naming_screen/page_swap_*`, `menu`, `keyboard_*`, `cursor*` and
+  `union_room_chat/*`: they belong to the kana keyboards; two page labels are
+  0x40 bytes instead of 0x60, the cursors 0x80 instead of 0xA0, the keyboard
+  maps use 4 more tiles and other palettes, the chat background has 38 tiles
+  instead of 39;
+- `easy_chat/window` and `rectangle_cursor`: the Japanese window has the button
+  labels the decomp prints drawn into its tiles and another frame layout; the
+  word cursors follow the Japanese word grid;
 - `bag/check_berry` and `bag/berry_tag.bin`: the berry tag is laid out
   differently (158 tilemap cells), so the window templates need checking;
-- `slot_machine/menu` and `info_box.bin`: the Japanese code loads 0x1D20 bytes
-  of tiles, the decomp 0x2200.
+- `slot_machine/menu`, `menu.bin` and `info_box.bin`: the Japanese code loads
+  0x1D20 bytes of tiles, the decomp 0x2200;
+- `frontier_pass/cancel*.bin`: 12 tilemap cells, not 18;
+- `berry_fix/*` (12 files, same sizes): the Japanese berry program's screens
+  have their text drawn into the images, the decomp prints it in windows;
+- frames that go with the Japanese window templates (code), which are
+  narrower or elsewhere: `battle_interface/textbox` and `textbox_map` (action
+  menu x2 w15, the decomp's x1 w14; the move, PP and type windows),
+  `bag/menu`, `menu.bin` and `menu_pyramid.bin` (description window x1 w12,
+  not x0 w14), `pokenav/message.bin` (x4 w22, not x3 w24),
+  `pokenav/ribbons/summary_bg.bin` (name window w12, not w13),
+  `battle_frontier/factory_screen/menu.bin`,
+  `battle_frontier/tourney_info_card` and its tilemap, and the
+  `wallclock/clock` tiles and screens (corner button window 4 tiles wide, not 6).
 
 ### Credits, Trainer Hill, Easy Chat, language
 
@@ -115,12 +144,19 @@ Graphics that need code, with what differs:
   tables and code references.
 - **Graphics.** Every LZ77 stream the ROM points to was decompressed; 4,129 of
   the decomp's 4,324 compressed assets match one byte for byte and anchor the
-  rest. Each Italian graphic's counterpart is tied to the code or table that
-  loads it: sprite sheets with the decomp's size and tag, literal pools that also
-  hold the anchored tilemaps and palettes the decomp loads with it, and tables
-  with the same slots. Every staged asset has the English size (or the size its
+  rest. Every graphics file the English build includes was then looked up in
+  the Japanese ROM (raw, compressed, and decompressed against every stream).
+  Each one without a copy is tied to the code or table that loads it: sprite
+  sheets with the decomp's size and tag, literal pools of the Japanese function
+  that matches the decomp's (from a matching English build) or that also hold
+  the anchored tilemaps and palettes the decomp loads with it, and tables with
+  the same slots. Every staged asset has the English size (or the size its
   patch expects) and, where it goes with tilemaps, those are identical or staged
-  too. Differences were checked tile by tile and by rendering the tiles.
+  too; a tilemap whose Japanese frames go with other window templates stays
+  English. Differences were checked tile by tile, by rendering the tiles and,
+  for the reachable screens (title, bag, summary, PokéNav), in an emulator
+  against the cartridge: the title sequence of a scratch GBA build matches the
+  cartridge pixel for pixel.
 - **Credits, floors, lists** were read from the code that uses them (page count,
   page delay, the Trainer Hill load, the Easy Chat groups table).
 - Every pair was read in both languages. A held-out check (trainer-ID links
@@ -188,10 +224,11 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
 
 Done in this repository, marked *done* below: patches 0057–0061 (item 1, the
 name length of item 2, item 4 but the Pokédex page, item 5 but the bard, the
-credits' scene pages and the two-floor Trainer Hill), patches 0070–0073
-(credits page delay, contest results title bar, menu info icons, title screen
-version logo palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the
-port UI (3) and the integration (8). The other items are open.
+credits' scene pages and the two-floor Trainer Hill), patches 0070–0073 and
+0083 (credits page delay, contest results title bar, menu info icons, title
+screen version logo palettes, title screen logo layout), all behind
+`GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI (3) and the integration (8).
+The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese

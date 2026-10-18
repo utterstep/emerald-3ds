@@ -1,0 +1,146 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese title screen logo layout
+Applies after 0073-japanese-title-version-palette.patch; apply with tools/bootstrap.py.
+
+The Japanese title logo (staged by tools/localize_japanese.py only into a tree
+with this patch; it looks for TITLE_LOGO_JAPANESE) has another size and place:
+22x7 tiles in five palettes, its affine map 32x9 entries, 16 pixels from the
+left edge instead of 29, and it slides left as well as up (the decomp's unused
+tPointless is its x). The clouds' map uses palette 5, which the Japanese ROM
+loads with the logo's palettes. The version banner comes down to y 48 at x 162
+and 210, its right half a 32x32 sprite. All of it as the Japanese ROM's
+CB2_InitTitleScreen, Task_TitleScreenPhase1-3 and sprite data do.
+
+--- a/src/title_screen.c
++++ b/src/title_screen.c
+@@ -44,10 +44,21 @@
+ #define TITLE_CENTER_X_OFFSET ((TITLE_SCREEN_WIDTH - DISPLAY_WIDTH) / 2)
+ 
+ #define VERSION_BANNER_RIGHT_TILEOFFSET 64
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// TITLE_LOGO_JAPANESE: the Japanese logo is 22 tiles wide and starts 16 pixels
++// right of the English one's 29; it slides left as well as up, and the version
++// banner (its right half one 32x32 sprite) comes down at its right.
++#define VERSION_BANNER_LEFT_X (162 + TITLE_CENTER_X_OFFSET)
++#define VERSION_BANNER_RIGHT_X (210 + TITLE_CENTER_X_OFFSET)
++#define VERSION_BANNER_Y -16
++#define VERSION_BANNER_Y_GOAL 48
++#define LOGO_START_X 16
++#else
+ #define VERSION_BANNER_LEFT_X (98 + TITLE_CENTER_X_OFFSET)
+ #define VERSION_BANNER_RIGHT_X (162 + TITLE_CENTER_X_OFFSET)
+ #define VERSION_BANNER_Y 2
+ #define VERSION_BANNER_Y_GOAL 66
++#endif
+ #define START_BANNER_X (128 + TITLE_CENTER_X_OFFSET)
+ 
+ #define CLEAR_SAVE_BUTTON_COMBO (B_BUTTON | SELECT_BUTTON | DPAD_UP)
+@@ -144,10 +155,18 @@
+     .objMode = ST_OAM_OBJ_NORMAL,
+     .mosaic = FALSE,
+     .bpp = ST_OAM_8BPP,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    .shape = SPRITE_SHAPE(32x32),
++#else
+     .shape = SPRITE_SHAPE(64x32),
++#endif
+     .x = 0,
+     .matrixNum = 0,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    .size = SPRITE_SIZE(32x32),
++#else
+     .size = SPRITE_SIZE(64x32),
++#endif
+     .tileNum = 0,
+     .priority = 0,
+     .paletteNum = 0,
+@@ -649,7 +668,14 @@
+         // bg2
+         LZ77UnCompVram(gTitleScreenPokemonLogoGfx, (void *)(BG_CHAR_ADDR(0)));
+         LZ77UnCompVram(gTitleScreenPokemonLogoTilemap, (void *)(BG_SCREEN_ADDR(9)));
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // The logo's five palettes, then the clouds' (their map uses palette 5),
++        // which Rayquaza's map uses as palette 14.
++        LoadPalette(gTitleScreenBgPalettes, BG_PLTT_ID(0), 6 * PLTT_SIZE_4BPP);
++        LoadPalette(&gTitleScreenBgPalettes[5 * 16], BG_PLTT_ID(14), PLTT_SIZE_4BPP);
++#else
+         LoadPalette(gTitleScreenBgPalettes, BG_PLTT_ID(0), 15 * PLTT_SIZE_4BPP);
++#endif
+         // bg3
+         LZ77UnCompVram(sTitleScreenRayquazaGfx, (void *)(BG_CHAR_ADDR(2)));
+         LZ77UnCompVram(sTitleScreenRayquazaTilemap, (void *)(BG_SCREEN_ADDR(26)));
+@@ -684,7 +710,11 @@
+ 
+         gTasks[taskId].tCounter = 256;
+         gTasks[taskId].tSkipToNext = FALSE;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        gTasks[taskId].tPointless = -LOGO_START_X; // the logo's x, which the Japanese game slides
++#else
+         gTasks[taskId].tPointless = -16;
++#endif
+         gTasks[taskId].tBg2Y = -32;
+         gMain.state = 3;
+         break;
+@@ -696,13 +726,22 @@
+         break;
+     case 4:
+         PanFadeAndZoomScreen(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 0x100, 0);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        SetGpuReg(REG_OFFSET_BG2X_L, -LOGO_START_X * 256);
++#else
+         SetGpuReg(REG_OFFSET_BG2X_L, -29 * 256);
++#endif
+         SetGpuReg(REG_OFFSET_BG2X_H, -1);
+         SetGpuReg(REG_OFFSET_BG2Y_L, -32 * 256);
+         SetGpuReg(REG_OFFSET_BG2Y_H, -1);
+ #if defined(PORT_BRIDGE) && !defined(CTR_GBA_STAGE)
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // The logo and the version banner right of it, centred as one.
++        SetGpuReg(REG_OFFSET_BG2HOFS, -LOGO_START_X - TITLE_CENTER_X_OFFSET);
++#else
+         // Visible logo pixels span x=4..168 (center 86), not the 256px canvas.
+         SetGpuReg(REG_OFFSET_BG2HOFS, -(TITLE_SCREEN_WIDTH / 2 - 86));
++#endif
+         SetGpuReg(REG_OFFSET_BG2VOFS, -32);
+         SetGpuReg(REG_OFFSET_BG0HOFS, -TITLE_CENTER_X_OFFSET);
+         SetGpuReg(REG_OFFSET_BG0VOFS, DISPLAY_HEIGHT - TITLE_SCREEN_HEIGHT);
+@@ -799,6 +838,9 @@
+ // Create "Press Start" and copyright banners, and slide Pokémon logo up
+ static void Task_TitleScreenPhase2(u8 taskId)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    u32 xPos;
++#endif
+     u32 yPos;
+ 
+     // Skip to next phase when A, B, Start, or Select is pressed
+@@ -835,6 +877,16 @@
+     if (!(gTasks[taskId].tCounter & 1) && gTasks[taskId].tBg2Y != 0)
+         gTasks[taskId].tBg2Y++;
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // Slide the Japanese logo left
++    xPos = gTasks[taskId].tPointless * 256;
++    SetGpuReg(REG_OFFSET_BG2X_L, xPos);
++    SetGpuReg(REG_OFFSET_BG2X_H, xPos / 0x10000);
++#if defined(PORT_BRIDGE) && !defined(CTR_GBA_STAGE)
++    SetGpuReg(REG_OFFSET_BG2HOFS, gTasks[taskId].tPointless - TITLE_CENTER_X_OFFSET);
++#endif
++#endif
++
+     // Slide Pokémon logo up
+     yPos = gTasks[taskId].tBg2Y * 256;
+     SetGpuReg(REG_OFFSET_BG2Y_L, yPos);
+@@ -875,6 +927,13 @@
+     }
+     else
+     {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        SetGpuReg(REG_OFFSET_BG2X_L, 0);
++        SetGpuReg(REG_OFFSET_BG2X_H, 0);
++#if defined(PORT_BRIDGE) && !defined(CTR_GBA_STAGE)
++        SetGpuReg(REG_OFFSET_BG2HOFS, -TITLE_CENTER_X_OFFSET);
++#endif
++#endif
+         SetGpuReg(REG_OFFSET_BG2Y_L, 0);
+         SetGpuReg(REG_OFFSET_BG2Y_H, 0);
+ #if defined(PORT_BRIDGE) && !defined(CTR_GBA_STAGE)
