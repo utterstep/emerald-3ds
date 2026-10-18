@@ -1,0 +1,214 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese Pokédex units and lines
+Applies after 0077-japanese-placeholder-code.patch; apply with tools/bootstrap.py.
+
+The Japanese Pokédex shows height and weight in meters and kilograms: the unit
+templates (gText_EmptyHeight/gText_EmptyWeight, unused in the international game)
+with the value over them (PrintDecimalNum), at that ROM's places. Its cry page reads
+"<species>'s cry" and its size page "<species> and <player>'s size comparison", with
+the pieces that ROM prints apart; its list names start a tile further right. The
+Lotad and Seedot size records stay in centimeters, as the Japanese texts say, and the
+decimal separator is that charset's period (0xB8). Other languages are unchanged.
+
+diff --git a/src/field_specials.c b/src/field_specials.c
+index b92efa1..de0a13e 100644
+--- a/src/field_specials.c
++++ b/src/field_specials.c
+@@ -191,7 +191,11 @@ static void DetermineCyclingRoadResults(u32 numFrames, u8 numBikeCollisions)
+     if (numFrames < 3600)
+     {
+         ConvertIntToDecimalStringN(gStringVar2, numFrames / 60, STR_CONV_MODE_RIGHT_ALIGN, 2);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        gStringVar2[2] = CHAR_COMMA; // The Japanese charset's period
++#else
+         gStringVar2[2] = CHAR_DEC_SEPARATOR;
++#endif
+         ConvertIntToDecimalStringN(&gStringVar2[3], ((numFrames % 60) * 100) / 60, STR_CONV_MODE_LEADING_ZEROS, 2);
+         StringAppend(gStringVar2, gText_SpaceSeconds);
+     }
+diff --git a/src/pokedex.c b/src/pokedex.c
+index dc2dd3b..3395b71 100644
+--- a/src/pokedex.c
++++ b/src/pokedex.c
+@@ -278,10 +278,29 @@ static void SpriteCB_SlideCaughtMonToCenter(struct Sprite *sprite);
+ static void PrintMonInfo(u32 num, u32, u32 owned, u32 newEntry);
+ #if defined(PORT_BRIDGE) && (GAME_LANGUAGE == LANGUAGE_FRENCH || GAME_LANGUAGE == LANGUAGE_ITALIAN)
+ #define NATIVE_DEX_MEASUREMENT_X 0x90
++#elif GAME_LANGUAGE == LANGUAGE_JAPANESE
++#define NATIVE_DEX_MEASUREMENT_X 0x80
+ #else
+ #define NATIVE_DEX_MEASUREMENT_X 0x81
+ #endif
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's texts of the info, cry and size pages, which the
++// international code leaves unused: the metric units' templates ("   . m",
++// "   . kg"), "<species>'s" (の) and "and" (と).
++extern const u8 gText_EmptyHeight[];
++extern const u8 gText_EmptyWeight[];
++extern const u8 gText_EmptyPokedexInfo1[];
++extern const u8 gText_EmptyPokedexInfo2[];
++// The species names in the list start a tile further right.
++#define LIST_NAME_LEFT 23
++// The Japanese charset's period is the international comma's code.
++#define DEX_DECIMAL_SEPARATOR CHAR_COMMA
++#else
++#define LIST_NAME_LEFT 0x16
++#define DEX_DECIMAL_SEPARATOR CHAR_DEC_SEPARATOR
++#endif
++
+ static void PrintMonHeight(u16 height, u8 left, u8 top);
+ static void PrintMonWeight(u16 weight, u8 left, u8 top);
+ static void ResetOtherVideoRegisters(u16);
+@@ -2410,13 +2429,13 @@ static void CreateMonListEntry(u8 position, u16 b, u16 ignored)
+                 {
+                     CreateMonDexNum(entryNum, 0x12, i * 2, ignored);
+                     CreateCaughtBall(sPokedexView->pokedexList[entryNum].owned, 0x11, i * 2, ignored);
+-                    CreateMonName(sPokedexView->pokedexList[entryNum].dexNum, 0x16, i * 2);
++                    CreateMonName(sPokedexView->pokedexList[entryNum].dexNum, LIST_NAME_LEFT, i * 2);
+                 }
+                 else
+                 {
+                     CreateMonDexNum(entryNum, 0x12, i * 2, ignored);
+                     CreateCaughtBall(FALSE, 0x11, i * 2, ignored);
+-                    CreateMonName(0, 0x16, i * 2);
++                    CreateMonName(0, LIST_NAME_LEFT, i * 2);
+                 }
+             }
+             entryNum++;
+@@ -2435,13 +2454,13 @@ static void CreateMonListEntry(u8 position, u16 b, u16 ignored)
+             {
+                 CreateMonDexNum(entryNum, 18, sPokedexView->listVOffset * 2, ignored);
+                 CreateCaughtBall(sPokedexView->pokedexList[entryNum].owned, 0x11, sPokedexView->listVOffset * 2, ignored);
+-                CreateMonName(sPokedexView->pokedexList[entryNum].dexNum, 0x16, sPokedexView->listVOffset * 2);
++                CreateMonName(sPokedexView->pokedexList[entryNum].dexNum, LIST_NAME_LEFT, sPokedexView->listVOffset * 2);
+             }
+             else
+             {
+                 CreateMonDexNum(entryNum, 18, sPokedexView->listVOffset * 2, ignored);
+                 CreateCaughtBall(FALSE, 17, sPokedexView->listVOffset * 2, ignored);
+-                CreateMonName(0, 0x16, sPokedexView->listVOffset * 2);
++                CreateMonName(0, LIST_NAME_LEFT, sPokedexView->listVOffset * 2);
+             }
+         }
+         break;
+@@ -2461,13 +2480,13 @@ static void CreateMonListEntry(u8 position, u16 b, u16 ignored)
+             {
+                 CreateMonDexNum(entryNum, 18, vOffset * 2, ignored);
+                 CreateCaughtBall(sPokedexView->pokedexList[entryNum].owned, 0x11, vOffset * 2, ignored);
+-                CreateMonName(sPokedexView->pokedexList[entryNum].dexNum, 0x16, vOffset * 2);
++                CreateMonName(sPokedexView->pokedexList[entryNum].dexNum, LIST_NAME_LEFT, vOffset * 2);
+             }
+             else
+             {
+                 CreateMonDexNum(entryNum, 18, vOffset * 2, ignored);
+                 CreateCaughtBall(FALSE, 0x11, vOffset * 2, ignored);
+-                CreateMonName(0, 0x16, vOffset * 2);
++                CreateMonName(0, LIST_NAME_LEFT, vOffset * 2);
+             }
+         }
+         break;
+@@ -3250,6 +3269,9 @@ static void PrintInfoScreenText(const u8 *str, u8 left, u8 top)
+     color[0] = TEXT_COLOR_TRANSPARENT;
+     color[1] = TEXT_DYNAMIC_COLOR_6;
+     color[2] = TEXT_COLOR_LIGHT_GRAY;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    top++; // The Japanese glyphs sit a row higher; that ROM prints these a pixel lower
++#endif
+ 
+     AddTextPrinterParameterized4(0, FONT_NORMAL, left, top, 0, 0, color, TEXT_SKIP_DRAW, str);
+ }
+@@ -3651,8 +3673,14 @@ static void Task_LoadCryScreen(u8 taskId)
+         gMain.state++;
+         break;
+     case 4:
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // "<species>'s" over "cry", as the Japanese ROM words and places them.
++        PrintInfoScreenText(gText_EmptyPokedexInfo1, 88 + 8 * PrintCryScreenSpeciesName(0, sPokedexListItem->dexNum, 88, 33), 33);
++        PrintInfoScreenText(gText_CryOf, 88, 49);
++#else
+         PrintInfoScreenText(gText_CryOf, 82, 33);
+         PrintCryScreenSpeciesName(0, sPokedexListItem->dexNum, 82, 49);
++#endif
+         gMain.state++;
+         break;
+     case 5:
+@@ -3843,11 +3871,20 @@ static void Task_LoadSizeScreen(u8 taskId)
+         break;
+     case 3:
+         {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++            // "<species> and <player>'s size comparison" (と, の おおきさくらべ),
++            // at the Japanese ROM's places.
++            PrintCryScreenSpeciesName(0, sPokedexListItem->dexNum, 32, 121);
++            PrintInfoScreenText(gText_EmptyPokedexInfo2, 72, 121);
++            PrintInfoScreenText(gSaveBlock2Ptr->playerName, 88, 121);
++            PrintInfoScreenText(gText_SizeComparedTo, 128, 121);
++#else
+             u8 string[64];
+ 
+             StringCopy(string, gText_SizeComparedTo);
+             StringAppend(string, gSaveBlock2Ptr->playerName);
+             PrintInfoScreenText(string, GetStringCenterAlignXOffset(FONT_NORMAL, string, DISPLAY_WIDTH), 121);
++#endif
+             gMain.state++;
+         }
+         break;
+@@ -4282,7 +4319,12 @@ static void PrintMonInfo(u32 num, u32 value, u32 owned, u32 newEntry)
+ 
+ static void PrintMonHeight(u16 height, u8 left, u8 top)
+ {
+-#if defined(PORT_BRIDGE) && (GAME_LANGUAGE == LANGUAGE_SPANISH || GAME_LANGUAGE == LANGUAGE_FRENCH || GAME_LANGUAGE == LANGUAGE_ITALIAN)
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's: the unit's template, then the height in meters over it
++    // (PrintDecimalNum, unused in the international game).
++    PrintInfoScreenText(gText_EmptyHeight, left, top);
++    PrintDecimalNum(0, height, left, top);
++#elif defined(PORT_BRIDGE) && (GAME_LANGUAGE == LANGUAGE_SPANISH || GAME_LANGUAGE == LANGUAGE_FRENCH || GAME_LANGUAGE == LANGUAGE_ITALIAN)
+     u8 buffer[16];
+     u8 *end = ConvertIntToDecimalStringN(buffer, height / 10, STR_CONV_MODE_LEFT_ALIGN, 4);
+ 
+@@ -4331,7 +4373,11 @@ static void PrintMonHeight(u16 height, u8 left, u8 top)
+ 
+ static void PrintMonWeight(u16 weight, u8 left, u8 top)
+ {
+-#if defined(PORT_BRIDGE) && (GAME_LANGUAGE == LANGUAGE_SPANISH || GAME_LANGUAGE == LANGUAGE_FRENCH || GAME_LANGUAGE == LANGUAGE_ITALIAN)
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // As PrintMonHeight, in kilograms.
++    PrintInfoScreenText(gText_EmptyWeight, left, top);
++    PrintDecimalNum(0, weight, left, top);
++#elif defined(PORT_BRIDGE) && (GAME_LANGUAGE == LANGUAGE_SPANISH || GAME_LANGUAGE == LANGUAGE_FRENCH || GAME_LANGUAGE == LANGUAGE_ITALIAN)
+     u8 buffer[16];
+     u8 *end = ConvertIntToDecimalStringN(buffer, weight / 10, STR_CONV_MODE_LEFT_ALIGN, 4);
+ 
+@@ -4644,6 +4690,9 @@ static void PrintInfoSubMenuText(u8 windowId, const u8 *str, u8 left, u8 top)
+     color[0] = TEXT_COLOR_TRANSPARENT;
+     color[1] = TEXT_DYNAMIC_COLOR_6;
+     color[2] = TEXT_COLOR_LIGHT_GRAY;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    top++; // As in PrintInfoScreenText
++#endif
+ 
+     AddTextPrinterParameterized4(windowId, FONT_NORMAL, left, top, 0, 0, color, TEXT_SKIP_DRAW, str);
+ }
+@@ -4734,7 +4783,7 @@ static void UNUSED PrintDecimalNum(u8 windowId, u16 num, u8 left, u8 top)
+     }
+ 
+     str[2] = CHAR_0 + ((num % 1000) % 100) / 10;
+-    str[3] = CHAR_DEC_SEPARATOR;
++    str[3] = DEX_DECIMAL_SEPARATOR;
+     str[4] = CHAR_0 + ((num % 1000) % 100) % 10;
+     str[5] = EOS;
+     PrintInfoSubMenuText(windowId, str, left, top);
+diff --git a/src/pokemon_size_record.c b/src/pokemon_size_record.c
+index dce52b9..f4ae29d 100644
+--- a/src/pokemon_size_record.c
++++ b/src/pokemon_size_record.c
+@@ -101,7 +101,7 @@ static u32 GetMonSize(u16 species, u16 b)
+ 
+ static void FormatMonSizeRecord(u8 *string, u32 size)
+ {
+-#ifdef UNITS_IMPERIAL
++#if defined(UNITS_IMPERIAL) && GAME_LANGUAGE != LANGUAGE_JAPANESE // The Japanese texts say cm
+     //Convert size from centimeters to inches
+     size = (f64)(size * 10) / (CM_PER_INCH * 10);
+ #endif
