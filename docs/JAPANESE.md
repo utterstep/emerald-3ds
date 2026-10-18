@@ -2,7 +2,7 @@
 
 **Status: experimental, not tested on a console.** `tools/localize_japanese.py`
 stages the Japanese game data from the player's ROM: texts, graphics, credits,
-the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061, 0070–0074 and 0076 make
+the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061 and 0070–0076 make
 a Japanese build behave like the Japanese game, and `tools/bootstrap.py`, the
 builders, the web builder and the release scripts accept that ROM ([Building
 the Japanese game](#building-the-japanese-game)). Some screens and features are
@@ -42,7 +42,8 @@ Conventions that differ from the Italian manifest:
 
 Besides the source texts, the manifest stages tables that a code patch of this
 repository declares empty for the Japanese build: the naming screen's two R-button
-tables (0074). The keyboards' rows of text (0074, 0076) and the Easy Chat word lists
+tables (0074), the Union Room chat's R-button table and Latin page title (0075). The
+keyboards' rows of text (0074–0076) and the Easy Chat word lists
 by letter, which the Japanese ROM files by kana row (0076), are source texts whose
 Japanese layout a code patch reads.
 
@@ -54,8 +55,8 @@ The Italian manifest stages 104 graphics. Their Japanese counterparts:
 |---|---|
 | Japanese asset identical to the English one (staged anyway) | 19 |
 | Same size and layout, staged | 45 |
-| Staged with a code patch of this repository (0071–0074, 0076) | 18 |
-| Another size or layout: need code, stay English (`graphics_layout_differs`) | 16 |
+| Staged with a code patch of this repository (0071–0076) | 21 |
+| Another size or layout: need code, stay English (`graphics_layout_differs`) | 13 |
 | No Japanese counterpart (`graphics_skipped`) | 6 |
 
 Staged in addition, as the Japanese game has them: `fonts/normal.hwjpnfont` (every
@@ -63,9 +64,10 @@ glyph one pixel row higher than the decomp's copy) and `fonts/short.fwjpnfont`
 (one glyph differs), the tilemaps `pokeblock/menu.bin.lz` and
 `trade/menu.bin`, which go with the staged Japanese tiles, and with 0074 the naming
 screen's tiles (the dakuten and handakuten keys), keyboard tilemaps, page swap frame
-and full-width underscore, and with 0076 Easy Chat's rectangle cursor (whole
-rectangles instead of mirrored halves). 93 graphics are staged in all, 61 of them
-LZ77 streams that staging also decompresses.
+and full-width underscore, with 0075 the Union Room chat's keyboard tiles and
+tilemap, and with 0076 Easy Chat's rectangle cursor (whole rectangles instead of
+mirrored halves). 98 graphics are staged in all, 66 of them LZ77 streams that
+staging also decompresses.
 
 Skipped: the five Latin fonts (the Japanese ROM has none; it prints with the
 Japanese fonts) and the port's `italian_the_end.bin.lz` (the Japanese credits
@@ -82,8 +84,6 @@ Graphics that need code, with what differs:
   the window positions are in code;
 - `pokenav/condition/graph` and `pokeblock/use_screen/graph`: 3872 and 4000 bytes
   instead of 6656, with other tilemaps;
-- `union_room_chat/*`: they belong to the chat's kana keyboard; the chat
-  background has 38 tiles instead of 39;
 - `bag/check_berry` and `bag/berry_tag.bin`: the berry tag is laid out
   differently (158 tilemap cells), so the window templates need checking;
 - `slot_machine/menu` and `info_box.bin`: the Japanese code loads 0x1D20 bytes
@@ -199,11 +199,11 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
 
 Done in this repository, marked *done* below: patches 0057–0061 (item 1, the
 name length of item 2, item 4 but the Pokédex page, item 5 but the bard, the
-credits' scene pages and the two-floor Trainer Hill), patches 0070–0074 and
-0076 (credits page delay, contest results title bar, menu info icons, title
-screen version logo palettes, the naming screen's and Easy Chat's keyboards), all
-behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the
-port UI (3) and the integration (8). The other items are open.
+credits' scene pages and the two-floor Trainer Hill), patches 0070–0076
+(credits page delay, contest results title bar, menu info icons, title screen
+version logo palettes, the naming screen's, the Union Room chat's and Easy Chat's
+keyboards), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI (3) and
+the integration (8). The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
@@ -229,12 +229,18 @@ port UI (3) and the integration (8). The other items are open.
    checked in an emulator: Easy Chat's keyboard. Its letter mode picks words by
    kana row (あいうえお なにぬねの やゆよ わ / かきくけこ はひふへほ そのた / …)
    from 45 lists instead of 27, group names and words are in three columns, and
-   the rectangle cursor is one sprite of the Japanese graphics. Open: Walda's
+   the rectangle cursor is one sprite of the Japanese graphics. *Done* (0075),
+   checked in an emulator with the link step skipped: the Union Room chat's
+   keyboard. Pages of hiragana, katakana, Latin letters and digits (the
+   `gText_EmptyTextInput*` rows), symbols and the registered texts; R gives the
+   last character its next form from a staged table, with a hiragana, katakana
+   or Latin label; keys, chat lines and the text typed are in the small font at
+   the Japanese spacing, and the chat's graphics are staged. Open: Walda's
    cipher (`walda_phrase.c`: the Japanese one reads 12 kana of 6 bits, so no
    phrase is accepted yet), Easy Chat's main screen (the Japanese phrase frames
    hold 3 words a row in other templates, its footer and window graphics differ:
-   `PrintCurrentPhrase`, `sEasyChatScreenTemplates`, `gEasyChatWindow_*`) and the
-   Union Room chat, with its graphics above.
+   `PrintCurrentPhrase`, `sEasyChatScreenTemplates`, `gEasyChatWindow_*`); the
+   chat's received lines are not checked on screen yet (they need a link).
 3. **Port UI** (done). The bottom screen and the HD battle box draw both glyph
    sets (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and every
    `CTR_TEXT` has its Japanese label: kana only, in the game's own words where
