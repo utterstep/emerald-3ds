@@ -1,0 +1,215 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese text placement in menus
+Applies after 0078-japanese-pokedex-units.patch; apply with tools/bootstrap.py.
+
+Smaller differences of text the Japanese ROM places in code: the summary's
+portrait panel (level and nickname above, the species and gender beside the ball)
+and its texts a pixel lower, the held item and ribbon count left-aligned; yes/no
+boxes a pixel lower; the party's action menu two tiles narrower; the Match Call
+list's class and name in fixed columns. Other languages are unchanged.
+
+diff --git a/src/menu.c b/src/menu.c
+index 5ddd400..8453bec 100644
+--- a/src/menu.c
++++ b/src/menu.c
+@@ -1723,7 +1723,11 @@ void CreateYesNoMenu(const struct WindowTemplate *window, u16 baseTileNum, u8 pa
+     printer.windowId = sYesNoWindowId;
+     printer.fontId = FONT_NORMAL;
+     printer.x = 8;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    printer.y = 2; // The Japanese ROM's, with its menu's top below
++#else
+     printer.y = 1;
++#endif
+     printer.currentX = printer.x;
+     printer.currentY = printer.y;
+     printer.fgColor = GetFontAttribute(FONT_NORMAL, FONTATTR_COLOR_FOREGROUND);
+@@ -1734,7 +1738,11 @@ void CreateYesNoMenu(const struct WindowTemplate *window, u16 baseTileNum, u8 pa
+     printer.lineSpacing = 0;
+ 
+     AddTextPrinter(&printer, TEXT_SKIP_DRAW, NULL);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    InitMenuNormal(sYesNoWindowId, FONT_NORMAL, 0, 2, GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT), 2, initialCursorPos);
++#else
+     InitMenuInUpperLeftCornerNormal(sYesNoWindowId, 2, initialCursorPos);
++#endif
+ }
+ 
+ void PrintMenuGridTable(u8 windowId, u8 optionWidth, u8 columns, u8 rows, const struct MenuAction *menuActions)
+diff --git a/src/party_menu.c b/src/party_menu.c
+index 3c4e0b1..017b0b9 100644
+--- a/src/party_menu.c
++++ b/src/party_menu.c
+@@ -2699,7 +2699,12 @@ static u8 DisplaySelectionWindow(u8 windowType)
+     switch (windowType)
+     {
+     case SELECTWINDOW_ACTIONS:
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // Two tiles narrower in the Japanese ROM: its actions are at most five kana.
++        SetWindowTemplateFields(&window, 2, 21, 19 - (sPartyMenuInternal->numActions * 2), 8, sPartyMenuInternal->numActions * 2, 14, 0x2E9);
++#else
+         SetWindowTemplateFields(&window, 2, 19, 19 - (sPartyMenuInternal->numActions * 2), 10, sPartyMenuInternal->numActions * 2, 14, 0x2E9);
++#endif
+         break;
+     case SELECTWINDOW_ITEM:
+         window = sItemGiveTakeWindowTemplate;
+diff --git a/src/pokemon_summary_screen.c b/src/pokemon_summary_screen.c
+index 81d5ea6..330e54a 100644
+--- a/src/pokemon_summary_screen.c
++++ b/src/pokemon_summary_screen.c
+@@ -612,10 +612,18 @@ static const struct WindowTemplate sSummaryTemplate[] =
+     },
+     [PSS_LABEL_WINDOW_PORTRAIT_SPECIES] = {
+         .bg = 0,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // The species and its gender symbol, right of the ball (PrintNotEggInfo).
++        .tilemapLeft = 4,
++        .tilemapTop = 14,
++        .width = 6,
++        .height = 2,
++#else
+         .tilemapLeft = 1,
+         .tilemapTop = 14,
+         .width = 9,
+         .height = 4,
++#endif
+         .paletteNum = 6,
+         .baseBlock = 413,
+     },
+@@ -3332,6 +3340,11 @@ static void ResetWindows(void)
+ 
+ static void PrintTextOnWindow(u8 windowId, const u8 *string, u8 x, u8 y, u8 lineSpacing, u8 colorId)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese glyphs sit a row higher: that ROM prints every summary text a
++    // pixel lower than the international code.
++    y++;
++#endif
+     AddTextPrinterParameterized4(windowId, FONT_NORMAL, x, y, 0, lineSpacing, sTextColors[colorId], 0, string);
+ }
+ 
+@@ -3349,7 +3362,9 @@ static void PrintMonInfo(void)
+ 
+ static void PrintNotEggInfo(void)
+ {
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+     u8 strArray[16];
++#endif
+     struct Pokemon *mon = &sMonSummaryScreen->currentMon;
+     struct PokeSummary *summary = &sMonSummaryScreen->summary;
+     u16 dexNum = SpeciesToPokedexNum(summary->species);
+@@ -3382,12 +3397,21 @@ static void PrintNotEggInfo(void)
+     StringCopy(gStringVar1, gText_LevelSymbol);
+     ConvertIntToDecimalStringN(gStringVar2, summary->level, STR_CONV_MODE_LEFT_ALIGN, 3);
+     StringAppend(gStringVar1, gStringVar2);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's panel: the level, then the nickname on the upper line; the
++    // species (no slash) right of the ball, its gender symbol after it.
++    PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_NICKNAME, gStringVar1, 0, 1, 0, 1);
++    GetMonNickname(mon, gStringVar1);
++    PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_NICKNAME, gStringVar1, summary->level < 10 ? 24 : 32, 1, 0, 1);
++    PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_SPECIES, gSpeciesNames[summary->species2], 0, 1, 0, 1);
++#else
+     PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_SPECIES, gStringVar1, 24, 17, 0, 1);
+     GetMonNickname(mon, gStringVar1);
+     PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_NICKNAME, gStringVar1, 0, 1, 0, 1);
+     strArray[0] = CHAR_SLASH;
+     StringCopy(&strArray[1], &gSpeciesNames[summary->species2][0]);
+     PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_SPECIES, strArray, 0, 1, 0, 1);
++#endif
+     PrintGenderSymbol(mon, summary->species2);
+     PutWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_NICKNAME);
+     PutWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
+@@ -3404,15 +3428,24 @@ static void PrintEggInfo(void)
+ 
+ static void PrintGenderSymbol(struct Pokemon *mon, u16 species)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // Right after the species name, in the fixed-width glyphs.
++    u8 x = StringLength(gSpeciesNames[species]) * 8;
++    u8 y = 1;
++#else
++    u8 x = 57;
++    u8 y = 17;
++#endif
++
+     if (species != SPECIES_NIDORAN_M && species != SPECIES_NIDORAN_F)
+     {
+         switch (GetMonGender(mon))
+         {
+         case MON_MALE:
+-            PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_SPECIES, gText_MaleSymbol, 57, 17, 0, 3);
++            PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_SPECIES, gText_MaleSymbol, x, y, 0, 3);
+             break;
+         case MON_FEMALE:
+-            PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_SPECIES, gText_FemaleSymbol, 57, 17, 0, 4);
++            PrintTextOnWindow(PSS_LABEL_WINDOW_PORTRAIT_SPECIES, gText_FemaleSymbol, x, y, 0, 4);
+             break;
+         }
+     }
+@@ -3986,7 +4019,11 @@ static void PrintHeldItemName(void)
+         text = gStringVar1;
+     }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    x = 8; // Left-aligned where the Japanese ROM's window starts
++#else
+     x = GetStringCenterAlignXOffset(FONT_NORMAL, text, 72) + 6;
++#endif
+     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_HELD_ITEM), text, x, 1, 0, 0);
+ }
+ 
+@@ -4006,7 +4043,11 @@ static void PrintRibbonCount(void)
+         text = gStringVar4;
+     }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    x = 8; // Left-aligned where the Japanese ROM's window starts
++#else
+     x = GetStringCenterAlignXOffset(FONT_NORMAL, text, 70) + 6;
++#endif
+     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_RIBBON_COUNT), text, x, 1, 0, 0);
+ }
+ 
+@@ -4805,7 +4846,12 @@ static void CreateCaughtBallSprite(struct Pokemon *mon)
+     u8 ball = ItemIdToBallId(GetMonData(mon, MON_DATA_POKEBALL));
+ 
+     LoadBallGfx(ball);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // Beside the species, as the Japanese ROM places it.
++    sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = CreateSprite(&gBallSpriteTemplates[ball], 16, 120, 0);
++#else
+     sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = CreateSprite(&gBallSpriteTemplates[ball], 16, 136, 0);
++#endif
+     gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].callback = SpriteCallbackDummy;
+     gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].oam.priority = 3;
+ }
+diff --git a/src/pokenav_match_call_list.c b/src/pokenav_match_call_list.c
+index 11370b1..6778951 100644
+--- a/src/pokenav_match_call_list.c
++++ b/src/pokenav_match_call_list.c
+@@ -413,6 +413,17 @@ void BufferMatchCallNameAndDesc(struct PokenavMatchCallEntry *matchCallEntry, u8
+         MatchCall_GetNameAndDesc(matchCallEntry->headerId, &className, &trainerName);
+     }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's columns, in its fixed-width glyphs: the class in ten
++    // characters, the name after it, padded with spaces to fifteen.
++    StringFill(str, CHAR_SPACE, 15);
++    if (className && trainerName)
++    {
++        *StringCopy(str, className) = CHAR_SPACE;
++        *StringCopy(str + 10, trainerName) = CHAR_SPACE;
++    }
++    str[15] = EOS;
++#else
+     if (className && trainerName)
+     {
+         u8 *str2 = GetStringClearToWidth(str, FONT_NARROW, className, 69);
+@@ -422,6 +433,7 @@ void BufferMatchCallNameAndDesc(struct PokenavMatchCallEntry *matchCallEntry, u8
+     {
+         GetStringClearToWidth(str, FONT_NARROW, NULL, 120);
+     }
++#endif
+ }
+ 
+ u8 GetMatchTableMapSectionId(int rematchIndex)
