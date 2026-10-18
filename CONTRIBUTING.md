@@ -264,6 +264,13 @@ file, and keep game-side edits minimal and behind `PORT_BRIDGE` or
 `build/upstream`, then regenerate the patches from it (`git diff` against the
 pinned commit, one file per topic; see the headers of the existing patches).
 
+A patch that touches a file the locale manifests pin stops that language's
+staging ("Source differs from the pinned patched tree"). Re-pin the manifests
+with `python tools/repin_locales.py --repo . --old OLD_TREE --new NEW_TREE`,
+where OLD_TREE is the patched tree before the change and NEW_TREE after it: the
+tool moves every text position through the change and refuses a text the change
+itself edits, whose ROM mapping must then be redone. `--check` only reports.
+
 ## Code
 
 - C99/GNU99. Native units build with `-Werror`.
