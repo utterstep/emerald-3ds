@@ -4,9 +4,10 @@
 #include "constants/global.h"
 
 /* Native UI literals are converted from UTF-8 into the game font encoding
- * (3ds_locale_text.h). The Japanese labels are the English ones until they
- * are written: CtrLocale_ToGame draws a label without kana in the Latin
- * glyphs, in any build. */
+ * (3ds_locale_text.h). The Japanese labels are kana, in the game's own
+ * words where it has them (no kanji: the font has none); CtrLocale_ToGame
+ * draws a label with kana in the Japanese glyphs, 8 pixels each, and one
+ * without in the Latin glyphs, in any build. */
 #if GAME_LANGUAGE == LANGUAGE_SPANISH
 #define CTR_TEXT(english, spanish, french, italian, japanese) (spanish)
 #elif GAME_LANGUAGE == LANGUAGE_FRENCH

@@ -3348,7 +3348,7 @@ enum { PLATE_NORMAL, PLATE_CHOSEN, PLATE_PRESSED, PLATE_OFF };
 static void DrawColumnButton(const ViewState *s, int i, u8 state)
 {
     const u8 *labels[SCR_COUNT] = {
-        Ascii(CTR_TEXT("MAP", "MAPA", "CARTE", "MAPPA", "MAP")), gText_MenuPokemon, gText_MenuBag, s->name, gText_MenuPokedex, gText_MenuPokenav,
+        Ascii(CTR_TEXT("MAP", "MAPA", "CARTE", "MAPPA", "マップ")), gText_MenuPokemon, gText_MenuBag, s->name, gText_MenuPokedex, gText_MenuPokenav,
         gText_MenuSave, gText_MenuOption,
     };
     const Icon *icon = &sRes.column[i];
@@ -3659,8 +3659,8 @@ static void DrawRegionName(const ViewState *s)
 static void DrawMapClock(const ViewState *s)
 {
     static const char *const phases[] = {
-        CTR_TEXT("MORNING", "MAÑANA", "MATIN", "MATTINA", "MORNING"), CTR_TEXT("DAY", "DÍA", "JOUR", "GIORNO", "DAY"),
-        CTR_TEXT("EVENING", "TARDE", "SOIR", "SERA", "EVENING"), CTR_TEXT("NIGHT", "NOCHE", "NUIT", "NOTTE", "NIGHT")
+        CTR_TEXT("MORNING", "MAÑANA", "MATIN", "MATTINA", "あさ"), CTR_TEXT("DAY", "DÍA", "JOUR", "GIORNO", "ひる"),
+        CTR_TEXT("EVENING", "TARDE", "SOIR", "SERA", "ゆうがた"), CTR_TEXT("NIGHT", "NOCHE", "NUIT", "NOTTE", "よる")
     };
     char time[8], speed[8];
     int top = CLOCK_Y, bottom = CLOCK_Y + CLOCK_H;
@@ -4147,7 +4147,7 @@ static void DrawSave(const ViewState *s)
 
     DrawSaveFile(s);
     if (s->saveStep == SAVE_DONE)
-        DrawSavePlate(64, 112, Ascii(CTR_TEXT("OK", "VALE", "OK", "OK", "OK")), TRUE, s->pressed == HIT_OK, TRUE, HIT_OK);
+        DrawSavePlate(64, 112, Ascii(CTR_TEXT("OK", "VALE", "OK", "OK", "とじる")), TRUE, s->pressed == HIT_OK, TRUE, HIT_OK);
     else
     {
         DrawSavePlate(10, 106, gText_Yes, TRUE, s->pressed == HIT_YES, s->canSave, HIT_YES);
@@ -4400,7 +4400,7 @@ static void DrawExtraCell(const ViewState *s, int row, const CtrExtra *extra, bo
 /* The tabs: SETTINGS (the options) and each page that has extras. */
 static void DrawOptionTabs(const ViewState *s)
 {
-    static const char *const names[CTR_EXTRAS_PAGES] = {CTR_TEXT("SETTINGS", "AJUSTES", "RÉGLAGES", "OPZIONI", "SETTINGS"), CTR_TEXT("ENHANCEMENTS", "MEJORAS", "AMÉLIOR.", "MIGLIORIE", "ENHANCEMENTS"), CTR_TEXT("CHEATS", "TRUCOS", "ASTUCES", "TRUCCHI", "CHEATS")};
+    static const char *const names[CTR_EXTRAS_PAGES] = {CTR_TEXT("SETTINGS", "AJUSTES", "RÉGLAGES", "OPZIONI", "せってい"), CTR_TEXT("ENHANCEMENTS", "MEJORAS", "AMÉLIOR.", "MIGLIORIE", "かくちょう"), CTR_TEXT("CHEATS", "TRUCOS", "ASTUCES", "TRUCCHI", "チート")};
     u8 pages[CTR_EXTRAS_PAGES], count = 0;
     int capTop, capBottom, cap, widths[CTR_EXTRAS_PAGES], need = 0, x = 4;
     bool8 fit = TRUE;
@@ -4461,9 +4461,9 @@ static void OptionNames(const u8 *names[OPTION_ROWS])
 {
     const u8 *const table[OPTION_ROWS] = {
         gText_TextSpeed, gText_BattleScene, gText_BattleStyle, gText_Sound,
-        gText_ButtonMode, gText_Frame, Ascii(CTR_TEXT("SHOW FPS", "MOSTRAR FPS", "AFFICH. FPS", "MOSTRA FPS", "SHOW FPS")), Ascii("VOXEL 3D"),
-        Ascii(CTR_TEXT("3D ANGLE", "ÁNGULO 3D", "ANGLE 3D", "ANGOLO 3D", "3D ANGLE")), Ascii(CTR_TEXT("3D ZOOM", "ZOOM 3D", "ZOOM 3D", "ZOOM 3D", "3D ZOOM")),
-        Ascii(CTR_TEXT("3D BLUR", "DESENFOQUE 3D", "FLOU 3D", "SFOC. 3D", "3D BLUR")), Ascii(CTR_TEXT("3D BATTLE", "COMBATE 3D", "COMBAT 3D", "BATTAGLIA 3D", "3D BATTLE"))};
+        gText_ButtonMode, gText_Frame, Ascii(CTR_TEXT("SHOW FPS", "MOSTRAR FPS", "AFFICH. FPS", "MOSTRA FPS", "FPSひょうじ")), Ascii(CTR_TEXT("VOXEL 3D", "VOXEL 3D", "VOXEL 3D", "VOXEL 3D", "3Dフィールド")),
+        Ascii(CTR_TEXT("3D ANGLE", "ÁNGULO 3D", "ANGLE 3D", "ANGOLO 3D", "3Dアングル")), Ascii(CTR_TEXT("3D ZOOM", "ZOOM 3D", "ZOOM 3D", "ZOOM 3D", "3Dズーム")),
+        Ascii(CTR_TEXT("3D BLUR", "DESENFOQUE 3D", "FLOU 3D", "SFOC. 3D", "3Dぼかし")), Ascii(CTR_TEXT("3D BATTLE", "COMBATE 3D", "COMBAT 3D", "BATTAGLIA 3D", "3Dバトル"))};
 
     memcpy(names, table, sizeof(table));
 }
@@ -5157,11 +5157,11 @@ static void MoveBody(const ViewState *s, int i)
     PpColours(s->moves4.currentPp[i], s->moves4.maxPp[i], &fg, &sh);
     DrawStrRight(&sNormal, text, x + MOVE_W - 12, oy + 32, fg, sh);
     {
-        int tx = DrawStr(&sSmall, Ascii(CTR_TEXT("POW ", "POT. ", "PUISS. ", "POT. ", "POW ")), x + 12, oy + 56, TXT_DARK, TXT_LIGHT);
+        int tx = DrawStr(&sSmall, Ascii(CTR_TEXT("POW ", "POT. ", "PUISS. ", "POT. ", "いりょく")), x + 12, oy + 56, TXT_DARK, TXT_LIGHT);
 
         DrawStr(&sSmall, data->power > 1 ? Number(data->power, 3, STR_CONV_MODE_LEFT_ALIGN) : Ascii("---"), tx,
                 oy + 56, TXT_DARK, TXT_LIGHT);
-        StringCopy(text, Ascii(CTR_TEXT("ACC ", "PREC. ", "PRÉC. ", "PREC. ", "ACC ")));
+        StringCopy(text, Ascii(CTR_TEXT("ACC ", "PREC. ", "PRÉC. ", "PREC. ", "めいちゅう")));
         StringAppend(text, data->accuracy ? Number(data->accuracy, 3, STR_CONV_MODE_LEFT_ALIGN) : Ascii("---"));
         DrawStrRight(&sSmall, text, x + MOVE_W - 12, oy + 56, TXT_DARK, TXT_LIGHT);
     }
@@ -5204,7 +5204,7 @@ static void DrawBattleTarget(const ViewState *s)
 {
     static const u8 left[] = {CTR_LOCALE_LATIN_START CHAR_LEFT_ARROW, EOS};
     static const u8 right[] = {CTR_LOCALE_LATIN_START CHAR_RIGHT_ARROW, EOS};
-    static const u8 ok[] = {CTR_LOCALE_LATIN_START CHAR_O, CHAR_K, EOS};
+    const u8 *ok = Ascii(CTR_TEXT("OK", "OK", "OK", "OK", "けってい"));
     const struct { s16 x, y; Rgb hue; const u8 *label; u8 hit; } plates[4] = {
         {6, ACT_Y, sHueRun, left, HIT_TARGET_LEFT},
         {164, ACT_Y, sHueRun, right, HIT_TARGET_RIGHT},

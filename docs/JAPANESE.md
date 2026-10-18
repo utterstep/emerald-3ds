@@ -86,9 +86,11 @@ These are open for discussion; none is implemented.
 2. **Names and keyboards.** Player and Pokémon names of 5 characters; kana pages
    for the naming screen, the Union Room chat and the Easy Chat keyboard (a
    45-entry index by kana rows instead of A–Z).
-3. **Port UI.** The bottom screen and the HD battle box draw text with the Latin
-   font only (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and
-   `CTR_TEXT` has no Japanese strings.
+3. **Port UI.** The bottom screen and the HD battle box draw both glyph sets
+   (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and every
+   `CTR_TEXT` has its Japanese label: kana only, in the game's own words where
+   it has them (`せってい`, `とじる`, the bag pockets, `いりょく`/`めいちゅう`),
+   each checked against its space at 8 pixels a glyph. Console texts stay ASCII.
 4. **Text built in code.** The trade question is two pieces joined around both
    Pokémon names; the Pokédex appends the word for Pokémon to the category with
    no space; the contest "Appeal no. X" lines have no number; mail puts the

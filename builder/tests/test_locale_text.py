@@ -147,6 +147,62 @@ int main(void)
                                     "-o", str(executable)], check=True)
                     subprocess.run([str(executable)], check=True)
 
+    def test_every_ctr_text_label_has_its_glyphs(self):
+        """The port's own labels (CTR_TEXT's five languages, 3ds_port/src): each
+        character has a glyph in its set, so none is drawn as '?'; the Japanese
+        one is kana (drawn in the Japanese glyphs, 8 px each) and fits the widest
+        cell (13 glyphs) and Ascii's 40-byte ring in a Japanese build."""
+        call = re.compile(r'CTR_TEXT\("([^"]*)", "([^"]*)", "([^"]*)", "([^"]*)", "([^"]*)"\)')
+        kana = re.compile(r"[ぁ-んァ-ン]")
+        labels = []
+        for path in sorted((ROOT / "3ds_port/src").glob("*.c")):
+            for match in call.finditer(path.read_text(encoding="utf-8")):
+                labels.append(match.groups())
+        self.assertGreater(len(labels), 70)
+        checks = []
+        for languages in labels:
+            japanese = languages[4]
+            self.assertTrue(kana.search(japanese), japanese)
+            self.assertLessEqual(len(japanese), 13, japanese)
+            for label in languages:
+                literal = label.replace("\\", "\\\\").replace('"', '\\"')
+                checks.append('    check("%s", %d);' % (literal, len(label)))
+        code = r'''
+#include <assert.h>
+#include <string.h>
+#include "3ds_locale.h"
+#include "3ds_locale_text.h"
+static void check(const char *label, size_t points)
+{
+    uint8_t out[40];
+    size_t n = CtrLocale_ToGame(out, sizeof(out), label), i;
+    /* Every code point written (no truncation), none as the '?' stand-in. */
+    assert(n >= points && n <= points + 4);
+    for (i = 0; i < n; ++i)
+        if (out[i] == 0xFC) ++i;
+        else assert(out[i] != 0xAC || strchr(label, '?'));
+}
+int main(void)
+{
+%s
+    return 0;
+}
+''' % "\n".join(checks)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "constants").mkdir()
+            (root / "constants/global.h").write_text(
+                "#define LANGUAGE_JAPANESE 1\n#define LANGUAGE_ENGLISH 2\n#define LANGUAGE_FRENCH 3\n"
+                "#define LANGUAGE_ITALIAN 4\n#define LANGUAGE_SPANISH 7\n", encoding="utf-8")
+            source, executable = root / "labels.c", root / "labels.exe"
+            source.write_text(code, encoding="utf-8")
+            for language in (1, 2):
+                with self.subTest(language=language):
+                    subprocess.run([CC, "-std=c99", "-Wall", "-Wextra", "-Werror", "-I" + str(root),
+                                    "-I" + str(ROOT / "3ds_port/include"), "-DGAME_LANGUAGE=" + str(language),
+                                    str(source), "-o", str(executable)], check=True)
+                    subprocess.run([str(executable)], check=True)
+
     @unittest.skipUnless((ROOT / "charmap.txt").exists(), "requires the patched source tree")
     def test_japanese_codes_follow_the_charmap(self):
         """Every kana and Japanese punctuation mark of the tree's charmap.txt."""
