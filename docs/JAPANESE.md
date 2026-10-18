@@ -2,11 +2,11 @@
 
 **Status: experimental, not tested on a console.** `tools/localize_japanese.py`
 stages the Japanese game data from the player's ROM: texts, graphics, credits,
-the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061 and 0070–0073 make
-a Japanese build behave like the Japanese game, and `tools/bootstrap.py`, the
-builders, the web builder and the release scripts accept that ROM ([Building
-the Japanese game](#building-the-japanese-game)). Some screens and features are
-still open ([Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)).
+the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061, 0067, 0068,
+0070–0073 and 0077–0079 make a Japanese build behave like the Japanese game, and
+`tools/bootstrap.py`, the builders, the web builder and the release scripts
+accept that ROM ([Building the Japanese game](#building-the-japanese-game)).
+Some screens and features are still open ([Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)).
 This page describes what the manifest covers, how it was made and checked, how
 to build the game and what is left.
 
@@ -190,8 +190,9 @@ Done in this repository, marked *done* below: patches 0057–0061 (item 1, the
 name length of item 2, item 4 but the Pokédex page, item 5 but the bard, the
 credits' scene pages and the two-floor Trainer Hill), patches 0070–0073
 (credits page delay, contest results title bar, menu info icons, title screen
-version logo palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the
-port UI (3) and the integration (8). The other items are open.
+version logo palettes), patches 0067, 0068 and 0077–0079 (item 9), all behind
+`GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI (3) and the integration (8).
+The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
@@ -222,7 +223,7 @@ port UI (3) and the integration (8). The other items are open.
    Japanese ROM's code, mail with its layout and signature window; the Lilycove
    Lady texts use the same placeholders, only more or fewer times, and the
    Pyramid's escape-code arrows draw as they are in Japanese glyphs, so neither
-   needs code. Still open: the Pokédex page's Japanese layout and metric units.
+   needs code. The Pokédex's metric units and its cry and size lines: item 9.
 5. **Content and logic.** Japanese Trainer Hill has no "closed until the game is
    cleared" state and only its two-floor challenge; only the international game
    refuses record mixing with a Japanese game; the bard sings each kana through a
@@ -240,6 +241,44 @@ port UI (3) and the integration (8). The other items are open.
    guard in `3ds_data.c`, `bootstrap.py --japanese-rom`, the release's
    `payload/ja/` and Japanese follower texts. Open: a fuller reference symbol
    file for the release recipe.
+9. **Numbers, fields and lines the code builds.** Checked screen by screen
+   against the cartridge (main menu, start menu, party, summary, bag, Pokédex,
+   PokéNav, Pokéblock case, trainer card, a wild battle). *Done*:
+   - 0067: the CONTINUE window fills the `{STR_VAR_n}` of its Japanese texts
+     (the international code left them unset and hung there with a save); the
+     start menu's save information has that ROM's layout and counter words.
+   - 0068: `CHAR_SPACER` (0x77, a kana in Japanese) is the space, so padded
+     numbers no longer show stray kana; the fields the 8-pixel digits overflowed
+     take the Japanese ROM's layout: summary stats, Exp. Points and power and
+     accuracy, the party boxes' HP, the Pokéblock feel, the PokéNav ribbon list,
+     and the battle's action and move menus (that ROM's window and text tables,
+     cursors and move-type label).
+   - 0077: of the texts whose placeholders differ from the English ones, the
+     code-filled ones: the Exp. Points message (the Japanese ROM has no third
+     battle buffer) and the trainer card's back (name, link wins and losses).
+     The others need nothing: the map texts that gained `{STR_VAR_1}` follow a
+     `GetPlayerBigGuyGirlString`/`GetRivalSonDaughterString` both games call,
+     the apprentice, Battle Dome, shop (TM move) and link player-count texts
+     use vars the shared code fills, the two contest texts are in an unused
+     table, and the appeal number and diploma were done in 0061.
+   - 0078: the Pokédex in meters and kilograms (that ROM's unit templates and
+     `PrintDecimalNum`), its cry and size lines in Japanese word order; the
+     Lotad/Seedot size records in centimeters; the decimal separator 0xB8.
+   - 0079: the summary's portrait panel and text positions, yes/no boxes, the
+     party action menu's width, the Match Call list's columns.
+
+   Still different, by design or open: the Japanese glyphs sit a row higher,
+   and that ROM prints most texts a pixel lower than the international code
+   (done only where the screens above were changed); the trainer card's front
+   (small-font values, positions); the bag's item menu and the party's message
+   windows (sizes); the field message box (the Japanese ROM's is 22 tiles at x 4
+   with its own frame code; the 3DS port places this box itself); the GBA
+   battle info boxes' numbers (the 3DS HD box draws its own); the PokéNav
+   condition search list's lines (`BufferSearchMonListItem`, not compared);
+   "HT"/"WT" on the Pokédex page (graphics in that ROM, no text);
+   `gText_MayBrendanMatchCallDesc` is English ("RAD NEIGHBOR": it sits under a
+   Spanish `#if` that no manifest maps); the period (0xAD) of strings written in
+   code draws as 。.
 
 ## Findings about the existing locale manifests
 
