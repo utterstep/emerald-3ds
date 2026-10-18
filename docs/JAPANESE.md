@@ -189,12 +189,12 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
 
 ## Code changes a Japanese build needs
 
-Done in this repository, marked *done* below: patches 0057–0061 and 0063 (item 1,
-the name length of item 2, item 4 but the Pokédex page, item 5 but the bard and
-the credits' scene pages), patches 0070–0073
-(credits page delay, contest results title bar, menu info icons, title screen
-version logo palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the
-port UI (3) and the integration (8). The other items are open.
+Done in this repository, marked *done* below: patches 0057–0061, 0063 and 0064
+(item 1, the name lengths of item 2, item 4 but the Pokédex page, item 5 but the
+bard and the credits' scene pages), patches 0070–0073 (credits page delay,
+contest results title bar, menu info icons, title screen version logo
+palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI (3) and
+the integration (8). The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
@@ -208,9 +208,12 @@ port UI (3) and the integration (8). The other items are open.
    `IsForeignGameLanguage` keeps the Latin-script games out of the Union Room
    and the trainer records.
 2. **Names and keyboards.** Player and Pokémon names of 5 characters (*done*,
-   0059; Walda's phrase, 12 characters in that ROM, still takes 15); kana pages
-   for the naming screen, the Union Room chat and the Easy Chat keyboard (a
-   45-entry index by kana rows instead of A–Z), with their graphics above.
+   0059) and Walda's phrase of 12 (*done*, 0064: as in that ROM, any 12
+   characters, each one's code minus 1 giving 6 bits of the wallpaper data, with
+   no letter table and no check bits; the save keeps the 15-character buffer);
+   kana pages for the naming screen, the Union Room chat and the Easy Chat
+   keyboard (a 45-entry index by kana rows instead of A–Z), with their graphics
+   above.
 3. **Port UI** (done). The bottom screen and the HD battle box draw both glyph
    sets (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and every
    `CTR_TEXT` has its Japanese label: kana only, in the game's own words where
