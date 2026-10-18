@@ -1,0 +1,165 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese texts whose values the code places
+Applies after 0073-japanese-title-version-palette.patch; apply with tools/bootstrap.py.
+
+Of the Japanese texts whose placeholders differ from the international ones, three
+need code (the others are filled by code both games run, see docs/JAPANESE.md):
+the Exp. Points message has no third battle buffer in the Japanese ROM, which puts
+"gained" after the name in the first and the number in the second; the trainer
+card's back appends gText_Var1sTrainerCard to the name and prints the link battle
+wins and losses apart from gText_WinsLosses, with that ROM's stat positions and
+small font. Other languages are unchanged.
+
+diff --git a/src/battle_script_commands.c b/src/battle_script_commands.c
+index 4ae4c71..c68baec 100644
+--- a/src/battle_script_commands.c
++++ b/src/battle_script_commands.c
+@@ -3490,10 +3490,25 @@ static void Cmd_getexp(void)
+                     else
+ #endif
+                     {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++                    // The Japanese text is "{B_BUFF1}{B_BUFF2} Exp. Points": that
++                    // ROM has no third buffer and puts 'gained' (or 'gained a
++                    // boosted') after the name in the first, the number in the second.
++                    gBattleTextBuff1[0] = B_BUFF_PLACEHOLDER_BEGIN;
++                    gBattleTextBuff1[1] = B_BUFF_MON_NICK_WITH_PREFIX;
++                    gBattleTextBuff1[2] = gBattleStruct->expGetterBattlerId;
++                    gBattleTextBuff1[3] = gBattleStruct->expGetterMonId;
++                    gBattleTextBuff1[4] = B_BUFF_STRING;
++                    gBattleTextBuff1[5] = i;
++                    gBattleTextBuff1[6] = (i & 0xFF00) >> 8;
++                    gBattleTextBuff1[7] = B_BUFF_EOS;
++                    PREPARE_WORD_NUMBER_BUFFER(gBattleTextBuff2, 5, gBattleMoveDamage);
++#else
+                     PREPARE_MON_NICK_WITH_PREFIX_BUFFER(gBattleTextBuff1, gBattleStruct->expGetterBattlerId, gBattleStruct->expGetterMonId);
+                     // buffer 'gained' or 'gained a boosted'
+                     PREPARE_STRING_BUFFER(gBattleTextBuff2, i);
+                     PREPARE_WORD_NUMBER_BUFFER(gBattleTextBuff3, 5, gBattleMoveDamage);
++#endif
+ 
+                     PrepareStringBattle(STRINGID_PKMNGAINEDEXP, gBattleStruct->expGetterBattlerId);
+                     }
+diff --git a/src/trainer_card.c b/src/trainer_card.c
+index 8a1411e..b8c515d 100644
+--- a/src/trainer_card.c
++++ b/src/trainer_card.c
+@@ -1167,20 +1167,34 @@ static void PrintProfilePhraseOnCard(void)
+ static void BufferNameForCardBack(void)
+ {
+     StringCopy(sData->textPlayersCard, sData->trainerCard.playerName);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese text has no {STR_VAR_1}: that ROM appends it to the name.
++    if (sData->cardType != CARD_TYPE_FRLG)
++        StringAppendN(sData->textPlayersCard, gText_Var1sTrainerCard, 10);
++#else
+     ConvertInternationalString(sData->textPlayersCard, sData->language);
+     if (sData->cardType != CARD_TYPE_FRLG)
+     {
+         StringCopy(gStringVar1, sData->textPlayersCard);
+         StringExpandPlaceholders(sData->textPlayersCard, gText_Var1sTrainerCard);
+     }
++#endif
+ }
+ 
+ static void PrintNameOnCardBack(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // A pixel lower in the Japanese ROM.
++    if (!sData->isHoenn)
++        AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_NORMAL, 130, 10, sTrainerCardTextColors, TEXT_SKIP_DRAW, sData->textPlayersCard);
++    else
++        AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, sData->textPlayersCard, 216), 10, sTrainerCardTextColors, TEXT_SKIP_DRAW, sData->textPlayersCard);
++#else
+     if (!sData->isHoenn)
+         AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_NORMAL, 136, 9, sTrainerCardTextColors, TEXT_SKIP_DRAW, sData->textPlayersCard);
+     else
+         AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, sData->textPlayersCard, 216), 9, sTrainerCardTextColors, TEXT_SKIP_DRAW, sData->textPlayersCard);
++#endif
+ }
+ 
+ static const u8 sText_HofTime[] = _("{STR_VAR_1}:{STR_VAR_2}:{STR_VAR_3}");
+@@ -1196,6 +1210,28 @@ static void BufferHofDebutTime(void)
+     }
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's card back: lines two pixels lower, and each value at a fixed
++// x in the small font, the counts right-aligned on five digits before the counter
++// that its card back draws after them.
++#define STAT_Y(top) ((top) * 16 + 35)
++#define PrintStatValue(x, top, color, str) AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_SMALL, x, STAT_Y(top), color, TEXT_SKIP_DRAW, str)
++
++static void PrintStatNameOnBackOfCard(u8 top, const u8 *statName)
++{
++    static const u8 xOffsets[] = {8, 16};
++
++    AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_NORMAL, xOffsets[sData->isHoenn], STAT_Y(top), sTrainerCardTextColors, TEXT_SKIP_DRAW, statName);
++}
++
++static void PrintStatOnBackOfCard(u8 top, const u8 *statName, u8 *stat, const u8 *color)
++{
++    static const u8 valueXOffsets[] = {160, 168};
++
++    PrintStatNameOnBackOfCard(top, statName);
++    PrintStatValue(valueXOffsets[sData->isHoenn], top, color, stat);
++}
++#else
+ static void PrintStatOnBackOfCard(u8 top, const u8 *statName, u8 *stat, const u8 *color)
+ {
+     static const u8 xOffsets[] = {8, 16};
+@@ -1204,11 +1240,19 @@ static void PrintStatOnBackOfCard(u8 top, const u8 *statName, u8 *stat, const u8
+     AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_NORMAL, xOffsets[sData->isHoenn], top * 16 + 33, sTrainerCardTextColors, TEXT_SKIP_DRAW, statName);
+     AddTextPrinterParameterized3(WIN_CARD_TEXT, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, stat, widths[sData->isHoenn]), top * 16 + 33, color, TEXT_SKIP_DRAW, stat);
+ }
++#endif
+ 
+ static void PrintHofDebutTimeOnCard(void)
+ {
+     if (sData->hasHofResult)
++    {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        PrintStatNameOnBackOfCard(0, gText_HallOfFameDebut);
++        PrintStatValue(145, 0, sTrainerCardStatColors, sData->textHofTime);
++#else
+         PrintStatOnBackOfCard(0, gText_HallOfFameDebut, sData->textHofTime, sTrainerCardStatColors);
++#endif
++    }
+ }
+ 
+ static const u8 *const sLinkBattleTexts[] =
+@@ -1232,10 +1276,19 @@ static void PrintLinkBattleResultsOnCard(void)
+ {
+     if (sData->hasLinkResults)
+     {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // The Japanese text holds only the words for wins and losses, with room
++        // for the numbers, which that ROM prints apart in the stat color.
++        PrintStatNameOnBackOfCard(1, sData->textLinkBattleType);
++        PrintStatValue(110, 1, sTrainerCardTextColors, gText_WinsLosses);
++        PrintStatValue(130, 1, sTrainerCardStatColors, sData->textLinkBattleWins);
++        PrintStatValue(185, 1, sTrainerCardStatColors, sData->textLinkBattleLosses);
++#else
+         StringCopy(gStringVar1, sData->textLinkBattleWins);
+         StringCopy(gStringVar2, sData->textLinkBattleLosses);
+         StringExpandPlaceholders(gStringVar4, gText_WinsLosses);
+         PrintStatOnBackOfCard(1, sData->textLinkBattleType, gStringVar4, sTrainerCardTextColors);
++#endif
+     }
+ }
+ 
+@@ -1336,7 +1389,15 @@ static void PrintBattleFacilityStringOnCard(void)
+         break;
+     case CARD_TYPE_EMERALD:
+         if (sData->trainerCard.frontierBP)
++        {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++            // A digit further left: the points' counter (BP) is in the text.
++            PrintStatNameOnBackOfCard(5, gText_BattlePtsWon);
++            PrintStatValue(160, 5, sTrainerCardStatColors, sData->textBattleFacilityStat);
++#else
+             PrintStatOnBackOfCard(5, gText_BattlePtsWon, sData->textBattleFacilityStat, sTrainerCardStatColors);
++#endif
++        }
+         break;
+     case CARD_TYPE_FRLG:
+         break;

@@ -1,0 +1,1546 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese number padding and the fields numbers fill
+Applies after 0067-japanese-save-info.patch; apply with tools/bootstrap.py.
+
+CHAR_SPACER (0x77), the international padding of right-aligned numbers and fields,
+is a kana in the Japanese charset: the Japanese ROM pads with its space, so a
+Japanese build makes CHAR_SPACER CHAR_SPACE (the genderless "symbol" strings of the
+PokéNav, written as {UNK_SPACER}, become a space too). Its digits are 8 pixels wide,
+where the international fields were sized for 6: the screens that cut numbers take
+the Japanese ROM's layout of those fields. The summary's stats, Exp. Points (with
+the word for "to go" that ROM shows, gText_EmptyString8) and move power and
+accuracy; the party boxes' names, levels and HP, and their sprites; the Pokéblock
+case's feel; the PokéNav ribbon list's lines; the battle's action and move menus
+(that ROM's windows, text positions and cursors, the move type's label in its own
+window). Other languages are unchanged.
+
+diff --git a/include/constants/characters.h b/include/constants/characters.h
+index 8ed440e..a14205a 100644
+--- a/include/constants/characters.h
++++ b/include/constants/characters.h
+@@ -71,7 +71,13 @@
+ //
+ #define CHAR_i_ACUTE           0x6F
+ //
++// 0x77 is a kana in the Japanese charset: that ROM pads numbers and fields with
++// its space instead. (tools/preproc includes this file without GAME_LANGUAGE.)
++#if defined(GAME_LANGUAGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++#define CHAR_SPACER            CHAR_SPACE
++#else
+ #define CHAR_SPACER            0x77 // Empty space
++#endif
+ //
+ #define CHAR_UP_ARROW          0x79
+ #define CHAR_DOWN_ARROW        0x7A
+diff --git a/src/battle_bg.c b/src/battle_bg.c
+index 6b1e6b2..c763d4a 100644
+--- a/src/battle_bg.c
++++ b/src/battle_bg.c
+@@ -160,6 +160,231 @@ const struct BgTemplate gBattleBgTemplates[] =
+     },
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's windows: the action menu, move names, PP and switch prompt
++// sized for its 8-pixel glyphs, the move type's label in its own window
++// (B_WIN_DUMMY), the link VS screen's names in the short font.
++static const struct WindowTemplate sStandardBattleWindowTemplates[] =
++{
++    [B_WIN_MSG] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 15,
++        .width = 26,
++        .height = 4,
++        .paletteNum = 0,
++        .baseBlock = 0x0090,
++    },
++    [B_WIN_ACTION_PROMPT] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 35,
++        .width = 15,
++        .height = 4,
++        .paletteNum = 0,
++        .baseBlock = 0x01b8,
++    },
++    [B_WIN_ACTION_MENU] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 35,
++        .width = 10,
++        .height = 4,
++        .paletteNum = 5,
++        .baseBlock = 0x0190,
++    },
++    [B_WIN_MOVE_NAME_1] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 55,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0300,
++    },
++    [B_WIN_MOVE_NAME_2] = {
++        .bg = 0,
++        .tilemapLeft = 10,
++        .tilemapTop = 55,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x030e,
++    },
++    [B_WIN_MOVE_NAME_3] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 57,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x031c,
++    },
++    [B_WIN_MOVE_NAME_4] = {
++        .bg = 0,
++        .tilemapLeft = 10,
++        .tilemapTop = 57,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x032a,
++    },
++    [B_WIN_PP] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 55,
++        .width = 5,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0290,
++    },
++    [B_WIN_DUMMY] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 57,
++        .width = 6,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x029a,
++    },
++    [B_WIN_PP_REMAINING] = {
++        .bg = 0,
++        .tilemapLeft = 24,
++        .tilemapTop = 55,
++        .width = 5,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x02a6,
++    },
++    [B_WIN_MOVE_TYPE] = {
++        .bg = 0,
++        .tilemapLeft = 25,
++        .tilemapTop = 57,
++        .width = 4,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x02b0,
++    },
++    [B_WIN_SWITCH_PROMPT] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 55,
++        .width = 10,
++        .height = 4,
++        .paletteNum = 5,
++        .baseBlock = 0x02b8,
++    },
++    [B_WIN_YESNO] = {
++        .bg = 0,
++        .tilemapLeft = 26,
++        .tilemapTop = 9,
++        .width = 3,
++        .height = 4,
++        .paletteNum = 5,
++        .baseBlock = 0x0100,
++    },
++    [B_WIN_LEVEL_UP_BOX] = {
++        .bg = 1,
++        .tilemapLeft = 19,
++        .tilemapTop = 8,
++        .width = 10,
++        .height = 11,
++        .paletteNum = 5,
++        .baseBlock = 0x0100,
++    },
++    [B_WIN_LEVEL_UP_BANNER] = {
++        .bg = 2,
++        .tilemapLeft = 18,
++        .tilemapTop = 0,
++        .width = 12,
++        .height = 3,
++        .paletteNum = 6,
++        .baseBlock = 0x016e,
++    },
++    [B_WIN_VS_PLAYER] = {
++        .bg = 1,
++        .tilemapLeft = 2,
++        .tilemapTop = 3,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0020,
++    },
++    [B_WIN_VS_OPPONENT] = {
++        .bg = 2,
++        .tilemapLeft = 2,
++        .tilemapTop = 3,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0040,
++    },
++    [B_WIN_VS_MULTI_PLAYER_1] = {
++        .bg = 1,
++        .tilemapLeft = 2,
++        .tilemapTop = 2,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0020,
++    },
++    [B_WIN_VS_MULTI_PLAYER_2] = {
++        .bg = 2,
++        .tilemapLeft = 2,
++        .tilemapTop = 2,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0040,
++    },
++    [B_WIN_VS_MULTI_PLAYER_3] = {
++        .bg = 1,
++        .tilemapLeft = 2,
++        .tilemapTop = 6,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0060,
++    },
++    [B_WIN_VS_MULTI_PLAYER_4] = {
++        .bg = 2,
++        .tilemapLeft = 2,
++        .tilemapTop = 6,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0080,
++    },
++    [B_WIN_VS_OUTCOME_DRAW] = {
++        .bg = 0,
++        .tilemapLeft = 12,
++        .tilemapTop = 2,
++        .width = 6,
++        .height = 2,
++        .paletteNum = 0,
++        .baseBlock = 0x00a0,
++    },
++    [B_WIN_VS_OUTCOME_LEFT] = {
++        .bg = 0,
++        .tilemapLeft = 6,
++        .tilemapTop = 2,
++        .width = 3,
++        .height = 2,
++        .paletteNum = 0,
++        .baseBlock = 0x00a0,
++    },
++    [B_WIN_VS_OUTCOME_RIGHT] = {
++        .bg = 0,
++        .tilemapLeft = 21,
++        .tilemapTop = 2,
++        .width = 3,
++        .height = 2,
++        .paletteNum = 0,
++        .baseBlock = 0x00a8,
++    },
++    DUMMY_WIN_TEMPLATE
++};
++#else
+ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
+ {
+     [B_WIN_MSG] = {
+@@ -380,7 +605,222 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
+     },
+     DUMMY_WIN_TEMPLATE
+ };
++#endif // GAME_LANGUAGE
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// As sStandardBattleWindowTemplates, with the Battle Arena's own windows.
++static const struct WindowTemplate sBattleArenaWindowTemplates[] =
++{
++    [B_WIN_MSG] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 15,
++        .width = 26,
++        .height = 4,
++        .paletteNum = 0,
++        .baseBlock = 0x0090,
++    },
++    [B_WIN_ACTION_PROMPT] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 35,
++        .width = 15,
++        .height = 4,
++        .paletteNum = 0,
++        .baseBlock = 0x01b8,
++    },
++    [B_WIN_ACTION_MENU] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 35,
++        .width = 10,
++        .height = 4,
++        .paletteNum = 5,
++        .baseBlock = 0x0190,
++    },
++    [B_WIN_MOVE_NAME_1] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 55,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0300,
++    },
++    [B_WIN_MOVE_NAME_2] = {
++        .bg = 0,
++        .tilemapLeft = 10,
++        .tilemapTop = 55,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x030e,
++    },
++    [B_WIN_MOVE_NAME_3] = {
++        .bg = 0,
++        .tilemapLeft = 2,
++        .tilemapTop = 57,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x031c,
++    },
++    [B_WIN_MOVE_NAME_4] = {
++        .bg = 0,
++        .tilemapLeft = 10,
++        .tilemapTop = 57,
++        .width = 7,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x032a,
++    },
++    [B_WIN_PP] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 55,
++        .width = 5,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0290,
++    },
++    [B_WIN_DUMMY] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 57,
++        .width = 6,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x029a,
++    },
++    [B_WIN_PP_REMAINING] = {
++        .bg = 0,
++        .tilemapLeft = 24,
++        .tilemapTop = 55,
++        .width = 5,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x02a6,
++    },
++    [B_WIN_MOVE_TYPE] = {
++        .bg = 0,
++        .tilemapLeft = 25,
++        .tilemapTop = 57,
++        .width = 4,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x02b0,
++    },
++    [B_WIN_SWITCH_PROMPT] = {
++        .bg = 0,
++        .tilemapLeft = 19,
++        .tilemapTop = 55,
++        .width = 10,
++        .height = 4,
++        .paletteNum = 5,
++        .baseBlock = 0x02b8,
++    },
++    [B_WIN_YESNO] = {
++        .bg = 0,
++        .tilemapLeft = 26,
++        .tilemapTop = 9,
++        .width = 3,
++        .height = 4,
++        .paletteNum = 5,
++        .baseBlock = 0x0100,
++    },
++    [B_WIN_LEVEL_UP_BOX] = {
++        .bg = 1,
++        .tilemapLeft = 19,
++        .tilemapTop = 8,
++        .width = 10,
++        .height = 11,
++        .paletteNum = 5,
++        .baseBlock = 0x0100,
++    },
++    [B_WIN_LEVEL_UP_BANNER] = {
++        .bg = 2,
++        .tilemapLeft = 18,
++        .tilemapTop = 0,
++        .width = 12,
++        .height = 3,
++        .paletteNum = 6,
++        .baseBlock = 0x016e,
++    },
++    [ARENA_WIN_PLAYER_NAME] = {
++        .bg = 0,
++        .tilemapLeft = 8,
++        .tilemapTop = 1,
++        .width = 5,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0100,
++    },
++    [ARENA_WIN_VS] = {
++        .bg = 0,
++        .tilemapLeft = 13,
++        .tilemapTop = 1,
++        .width = 4,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x010a,
++    },
++    [ARENA_WIN_OPPONENT_NAME] = {
++        .bg = 0,
++        .tilemapLeft = 17,
++        .tilemapTop = 1,
++        .width = 5,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0112,
++    },
++    [ARENA_WIN_MIND] = {
++        .bg = 0,
++        .tilemapLeft = 13,
++        .tilemapTop = 4,
++        .width = 4,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x011c,
++    },
++    [ARENA_WIN_SKILL] = {
++        .bg = 0,
++        .tilemapLeft = 13,
++        .tilemapTop = 6,
++        .width = 4,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0124,
++    },
++    [ARENA_WIN_BODY] = {
++        .bg = 0,
++        .tilemapLeft = 13,
++        .tilemapTop = 8,
++        .width = 4,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x012c,
++    },
++    [ARENA_WIN_JUDGMENT_TITLE] = {
++        .bg = 0,
++        .tilemapLeft = 10,
++        .tilemapTop = 11,
++        .width = 10,
++        .height = 2,
++        .paletteNum = 5,
++        .baseBlock = 0x0134,
++    },
++    [ARENA_WIN_JUDGMENT_TEXT] = {
++        .bg = 0,
++        .tilemapLeft = 4,
++        .tilemapTop = 15,
++        .width = 22,
++        .height = 4,
++        .paletteNum = 7,
++        .baseBlock = 0x0090,
++    },
++    DUMMY_WIN_TEMPLATE
++};
++#else
+ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
+ {
+     [B_WIN_MSG] = {
+@@ -592,6 +1032,7 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
+     },
+     DUMMY_WIN_TEMPLATE
+ };
++#endif // GAME_LANGUAGE
+ 
+ const struct WindowTemplate *const gBattleWindowTemplates[] =
+ {
+diff --git a/src/battle_controller_player.c b/src/battle_controller_player.c
+index a7f5704..3105c6c 100644
+--- a/src/battle_controller_player.c
++++ b/src/battle_controller_player.c
+@@ -1627,10 +1627,26 @@ static void MoveSelectionDisplayMoveNames(void)
+     }
+ }
+ 
++// The cursors' columns, in tiles: the Japanese ROM's go with its windows
++// (sStandardBattleWindowTemplates).
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++#define MOVE_CURSOR_X(cursorPosition) (8 * ((cursorPosition) & 1) + 1)
++#define ACTION_CURSOR_X(cursorPosition) (6 * ((cursorPosition) & 1) + 18)
++#else
++#define MOVE_CURSOR_X(cursorPosition) (9 * ((cursorPosition) & 1) + 1)
++#define ACTION_CURSOR_X(cursorPosition) (7 * ((cursorPosition) & 1) + 16)
++#endif
++
+ static void MoveSelectionDisplayPpString(void)
+ {
+     StringCopy(gDisplayedStringBattle, gText_MoveInterfacePP);
+     BattlePutTextOnWindow(gDisplayedStringBattle, B_WIN_PP);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM prints the type's label here, in its own window
++    // (B_WIN_DUMMY), and only the type's name in B_WIN_MOVE_TYPE.
++    StringCopy(gDisplayedStringBattle, gText_MoveInterfaceType);
++    BattlePutTextOnWindow(gDisplayedStringBattle, B_WIN_DUMMY);
++#endif
+ }
+ 
+ static void MoveSelectionDisplayPpNumber(void)
+@@ -1655,10 +1671,14 @@ static void MoveSelectionDisplayMoveType(void)
+     u8 *txtPtr;
+     struct ChooseMoveStruct *moveInfo = (struct ChooseMoveStruct *)(&gBattleBufferA[gActiveBattler][4]);
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    txtPtr = gDisplayedStringBattle;
++#else
+     txtPtr = StringCopy(gDisplayedStringBattle, gText_MoveInterfaceType);
+     *(txtPtr)++ = EXT_CTRL_CODE_BEGIN;
+     *(txtPtr)++ = EXT_CTRL_CODE_FONT;
+     *(txtPtr)++ = FONT_NORMAL;
++#endif
+ 
+     StringCopy(txtPtr, gTypeNames[gBattleMoves[moveInfo->moves[gMoveSelectionCursor[gActiveBattler]]].type]);
+     BattlePutTextOnWindow(gDisplayedStringBattle, B_WIN_MOVE_TYPE);
+@@ -1670,7 +1690,7 @@ static void MoveSelectionCreateCursorAt(u8 cursorPosition, u8 baseTileNum)
+     src[0] = baseTileNum + 1;
+     src[1] = baseTileNum + 2;
+ 
+-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 9 * (cursorPosition & 1) + 1, 55 + (cursorPosition & 2), 1, 2, 0x11);
++    CopyToBgTilemapBufferRect_ChangePalette(0, src, MOVE_CURSOR_X(cursorPosition), 55 + (cursorPosition & 2), 1, 2, 0x11);
+     CopyBgTilemapBufferToVram(0);
+ }
+ 
+@@ -1680,7 +1700,7 @@ static void MoveSelectionDestroyCursorAt(u8 cursorPosition)
+     src[0] = 0x1016;
+     src[1] = 0x1016;
+ 
+-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 9 * (cursorPosition & 1) + 1, 55 + (cursorPosition & 2), 1, 2, 0x11);
++    CopyToBgTilemapBufferRect_ChangePalette(0, src, MOVE_CURSOR_X(cursorPosition), 55 + (cursorPosition & 2), 1, 2, 0x11);
+     CopyBgTilemapBufferToVram(0);
+ }
+ 
+@@ -1690,7 +1710,7 @@ void ActionSelectionCreateCursorAt(u8 cursorPosition, u8 baseTileNum)
+     src[0] = 1;
+     src[1] = 2;
+ 
+-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 7 * (cursorPosition & 1) + 16, 35 + (cursorPosition & 2), 1, 2, 0x11);
++    CopyToBgTilemapBufferRect_ChangePalette(0, src, ACTION_CURSOR_X(cursorPosition), 35 + (cursorPosition & 2), 1, 2, 0x11);
+     CopyBgTilemapBufferToVram(0);
+ }
+ 
+@@ -1700,7 +1720,7 @@ void ActionSelectionDestroyCursorAt(u8 cursorPosition)
+     src[0] = 0x1016;
+     src[1] = 0x1016;
+ 
+-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 7 * (cursorPosition & 1) + 16, 35 + (cursorPosition & 2), 1, 2, 0x11);
++    CopyToBgTilemapBufferRect_ChangePalette(0, src, ACTION_CURSOR_X(cursorPosition), 35 + (cursorPosition & 2), 1, 2, 0x11);
+     CopyBgTilemapBufferToVram(0);
+ }
+ 
+diff --git a/src/battle_message.c b/src/battle_message.c
+index 97f12ce..c103a0c 100644
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -1492,6 +1492,249 @@ static const u16 sGrammarMoveUsedTable[] =
+ 
+ static const u8 sText_EmptyStatus[] = _("$$$$$$$");
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's: every text a pixel lower (its glyphs sit a row higher),
++// the move names in its normal font, the link VS screen's in the short font.
++static const struct BattleWindowText sTextOnWindowsInfo_Normal[] =
++{
++    [B_WIN_MSG] = {
++        .fillValue = PIXEL_FILL(0xF),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 1,
++        .fgColor = 1,
++        .bgColor = 15,
++        .shadowColor = 6,
++    },
++    [B_WIN_ACTION_PROMPT] = {
++        .fillValue = PIXEL_FILL(0xF),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 1,
++        .bgColor = 15,
++        .shadowColor = 6,
++    },
++    [B_WIN_ACTION_MENU] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_1] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_2] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_3] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_4] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_PP] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 12,
++        .bgColor = 14,
++        .shadowColor = 11,
++    },
++    [B_WIN_DUMMY] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_PP_REMAINING] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 12,
++        .bgColor = 14,
++        .shadowColor = 11,
++    },
++    [B_WIN_MOVE_TYPE] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_SWITCH_PROMPT] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_YESNO] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_LEVEL_UP_BOX] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_LEVEL_UP_BANNER] = {
++        .fillValue = PIXEL_FILL(0x0),
++        .fontId = FONT_SHORT,
++        .x = 32,
++        .y = 0,
++        .speed = 0,
++        .fgColor = 1,
++        .shadowColor = 2,
++    },
++    [B_WIN_VS_PLAYER] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_SHORT,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_VS_OPPONENT] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_SHORT,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_VS_MULTI_PLAYER_1] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_SHORT,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_VS_MULTI_PLAYER_2] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_SHORT,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_VS_MULTI_PLAYER_3] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_SHORT,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_VS_MULTI_PLAYER_4] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_SHORT,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_VS_OUTCOME_DRAW] = {
++        .fillValue = PIXEL_FILL(0x0),
++        .fontId = FONT_SHORT,
++        .x = 4,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 1,
++        .shadowColor = 6,
++    },
++    [B_WIN_VS_OUTCOME_LEFT] = {
++        .fillValue = PIXEL_FILL(0x0),
++        .fontId = FONT_SHORT,
++        .x = 2,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 1,
++        .shadowColor = 6,
++    },
++    [B_WIN_VS_OUTCOME_RIGHT] = {
++        .fillValue = PIXEL_FILL(0x0),
++        .fontId = FONT_SHORT,
++        .x = 2,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 1,
++        .shadowColor = 6,
++    },
++};
++#else
+ static const struct BattleWindowText sTextOnWindowsInfo_Normal[] =
+ {
+     [B_WIN_MSG] = {
+@@ -1731,7 +1974,243 @@ static const struct BattleWindowText sTextOnWindowsInfo_Normal[] =
+         .shadowColor = 6,
+     },
+ };
++#endif // GAME_LANGUAGE
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// As sTextOnWindowsInfo_Normal, with the Battle Arena's windows.
++static const struct BattleWindowText sTextOnWindowsInfo_Arena[] =
++{
++    [B_WIN_MSG] = {
++        .fillValue = PIXEL_FILL(0xF),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 1,
++        .fgColor = 1,
++        .bgColor = 15,
++        .shadowColor = 6,
++    },
++    [B_WIN_ACTION_PROMPT] = {
++        .fillValue = PIXEL_FILL(0xF),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 1,
++        .bgColor = 15,
++        .shadowColor = 6,
++    },
++    [B_WIN_ACTION_MENU] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_1] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_2] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_3] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_MOVE_NAME_4] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_PP] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 12,
++        .bgColor = 14,
++        .shadowColor = 11,
++    },
++    [B_WIN_DUMMY] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_PP_REMAINING] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 12,
++        .bgColor = 14,
++        .shadowColor = 11,
++    },
++    [B_WIN_MOVE_TYPE] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_SWITCH_PROMPT] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_YESNO] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_LEVEL_UP_BOX] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [B_WIN_LEVEL_UP_BANNER] = {
++        .fillValue = PIXEL_FILL(0x0),
++        .fontId = FONT_SHORT,
++        .x = 32,
++        .y = 0,
++        .speed = 0,
++        .fgColor = 1,
++        .shadowColor = 2,
++    },
++    [ARENA_WIN_PLAYER_NAME] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 1,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [ARENA_WIN_VS] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 8,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [ARENA_WIN_OPPONENT_NAME] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [ARENA_WIN_MIND] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 4,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [ARENA_WIN_SKILL] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 8,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [ARENA_WIN_BODY] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 4,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [ARENA_WIN_JUDGMENT_TITLE] = {
++        .fillValue = PIXEL_FILL(0xE),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 0,
++        .fgColor = 13,
++        .bgColor = 14,
++        .shadowColor = 15,
++    },
++    [ARENA_WIN_JUDGMENT_TEXT] = {
++        .fillValue = PIXEL_FILL(0x1),
++        .fontId = FONT_NORMAL,
++        .x = 0,
++        .y = 2,
++        .speed = 1,
++        .fgColor = 2,
++        .bgColor = 1,
++        .shadowColor = 3,
++    },
++};
++#else
+ static const struct BattleWindowText sTextOnWindowsInfo_Arena[] =
+ {
+     [B_WIN_MSG] = {
+@@ -1964,6 +2443,7 @@ static const struct BattleWindowText sTextOnWindowsInfo_Arena[] =
+         .shadowColor = 3,
+     },
+ };
++#endif // GAME_LANGUAGE
+ 
+ static const struct BattleWindowText *const sBattleTextOnWindowsInfo[] =
+ {
+diff --git a/src/data/party_menu.h b/src/data/party_menu.h
+index 703e8e4..f7ee47f 100644
+--- a/src/data/party_menu.h
++++ b/src/data/party_menu.h
+@@ -29,6 +29,40 @@ static const struct BgTemplate sPartyMenuBgTemplates[] =
+     },
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's: its 8-pixel digits print the HP right-aligned on three, the
++// max HP after a slash (DisplayPartyPokemonHP/MaxHP), and the names start further
++// right, after the icons (sPartyMenuSpriteCoords).
++static const struct PartyMenuBoxInfoRects sPartyBoxInfoRects[] =
++{
++    [PARTY_BOX_LEFT_COLUMN] =
++    {
++        BlitBitmapToPartyWindow_LeftColumn,
++        {
++            32, 11, 40, 12, // Nickname
++            32, 20, 32,  8, // Level
++            64, 20,  8,  8, // Gender
++            16, 36, 24,  8, // HP
++            40, 36, 24,  8, // Max HP
++            24, 35, 48,  3  // HP bar
++        },
++        16, 34, 64, 16      // Description text (e.g. NO USE)
++    },
++    [PARTY_BOX_RIGHT_COLUMN] =
++    {
++        BlitBitmapToPartyWindow_RightColumn,
++        {
++             32,  3, 40, 12, // Nickname
++             32, 11, 32,  8, // Level
++             64, 11,  8,  8, // Gender
++             80, 11, 24,  8, // HP
++            104, 11, 24,  8, // Max HP
++             88, 10, 48,  3  // HP bar
++        },
++        80, 4, 64, 16        // Description text
++    },
++};
++#else
+ static const struct PartyMenuBoxInfoRects sPartyBoxInfoRects[] =
+ {
+     [PARTY_BOX_LEFT_COLUMN] =
+@@ -60,11 +94,54 @@ static const struct PartyMenuBoxInfoRects sPartyBoxInfoRects[] =
+         77, 4, 64, 16        // Description text
+     },
+ };
++#endif // GAME_LANGUAGE
+ 
+ 
+ // Each layout array has an array for each of the 6 party slots
+ // The array for each slot has the sprite coords of its various sprites in the following order
+ // Pokémon icon (x, y), held item (x, y), status condition (x, y), menu Poké Ball (x, y)
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's: the icons, held items and status a little further right.
++static const u8 sPartyMenuSpriteCoords[PARTY_LAYOUT_COUNT][PARTY_SIZE][4 * 2] =
++{
++    [PARTY_LAYOUT_SINGLE] =
++    {
++        { 24,  40,  28,  50,  56,  52,  16,  34},
++        {112,  18, 116,  28, 144,  27, 102,  25},
++        {112,  42, 116,  52, 144,  51, 102,  49},
++        {112,  66, 116,  76, 144,  75, 102,  73},
++        {112,  90, 116, 100, 144,  99, 102,  97},
++        {112, 114, 116, 124, 144, 123, 102, 121},
++    },
++    [PARTY_LAYOUT_DOUBLE] =
++    {
++        {24, 24, 28, 34, 56, 36, 16, 18},
++        {24, 80, 28, 90, 56, 92, 16, 74},
++        {112, 18, 116, 28, 144, 27, 102, 25},
++        {112, 50, 116, 60, 144, 59, 102, 57},
++        {112, 82, 116, 92, 144, 91, 102, 89},
++        {112, 114, 116, 124, 144, 123, 102, 121},
++    },
++    [PARTY_LAYOUT_MULTI] =
++    {
++        {24, 24, 28, 34, 56, 36, 16, 18},
++        {24, 80, 28, 90, 56, 92, 16, 74},
++        {112, 26, 114, 36, 144, 35, 102, 33},
++        {112, 50, 114, 60, 144, 59, 102, 57},
++        {112, 82, 114, 92, 144, 91, 102, 89},
++        {112, 106, 114, 116, 144, 115, 102, 113},
++    },
++    [PARTY_LAYOUT_MULTI_SHOWCASE] =
++    {
++        {24, 32, 28, 42, 56, 44, 16, 26},
++        {112, 34, 114, 44, 144, 43, 102, 41},
++        {112, 58, 114, 68, 144, 67, 102, 65},
++        {24, 104, 28, 114, 56, 116, 16, 98},
++        {112, 106, 114, 116, 144, 115, 102, 113},
++        {112, 130, 114, 140, 144, 139, 102, 137},
++    },
++};
++#else
+ static const u8 sPartyMenuSpriteCoords[PARTY_LAYOUT_COUNT][PARTY_SIZE][4 * 2] =
+ {
+     [PARTY_LAYOUT_SINGLE] =
+@@ -104,6 +181,7 @@ static const u8 sPartyMenuSpriteCoords[PARTY_LAYOUT_COUNT][PARTY_SIZE][4 * 2] =
+         {104, 130, 106, 140, 136, 139, 102, 137},
+     },
+ };
++#endif // GAME_LANGUAGE
+ 
+ // Used only when both Cancel and Confirm are present
+ static const u32 sConfirmButton_Tilemap[] = INCBIN_U32("graphics/party_menu/confirm_button.bin");
+diff --git a/src/party_menu.c b/src/party_menu.c
+index e0cc52e..3c4e0b1 100644
+--- a/src/party_menu.c
++++ b/src/party_menu.c
+@@ -2529,10 +2529,15 @@ static void DisplayPartyPokemonHPCheck(struct Pokemon *mon, struct PartyMenuBox
+ 
+ static void DisplayPartyPokemonHP(u16 hp, struct PartyMenuBox *menuBox)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The slash goes with the max HP, as the Japanese ROM prints them.
++    ConvertIntToDecimalStringN(gStringVar1, hp, STR_CONV_MODE_RIGHT_ALIGN, 3);
++#else
+     u8 *strOut = ConvertIntToDecimalStringN(gStringVar1, hp, STR_CONV_MODE_RIGHT_ALIGN, 3);
+ 
+     strOut[0] = CHAR_SLASH;
+     strOut[1] = EOS;
++#endif
+ 
+     DisplayPartyPokemonBarDetail(menuBox->windowId, gStringVar1, 0, &menuBox->infoRects->dimensions[12]);
+ }
+diff --git a/src/pokeblock.c b/src/pokeblock.c
+index f3d1fa4..f7cd53f 100644
+--- a/src/pokeblock.c
++++ b/src/pokeblock.c
+@@ -692,7 +692,14 @@ static void HandleInitWindows(void)
+ 
+ static void PrintOnPokeblockWindow(u8 windowId, const u8 *string, s32 x)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM prints every text of the case at x 0, a pixel lower: its
++    // two digits of feel fill the window.
++    x = 0;
++    AddTextPrinterParameterized4(windowId, FONT_NORMAL, x, 2, 0, 0, sTextColor, 0, string);
++#else
+     AddTextPrinterParameterized4(windowId, FONT_NORMAL, x, 1, 0, 0, sTextColor, 0, string);
++#endif
+ }
+ 
+ static void DrawPokeblockMenuTitleText(void)
+diff --git a/src/pokemon_summary_screen.c b/src/pokemon_summary_screen.c
+index eaff1fc..81d5ea6 100644
+--- a/src/pokemon_summary_screen.c
++++ b/src/pokemon_summary_screen.c
+@@ -524,9 +524,16 @@ static const struct WindowTemplate sSummaryTemplate[] =
+     },
+     [PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT] = {
+         .bg = 0,
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // The Japanese ROM's: its values window takes the tile after the labels.
++        .tilemapLeft = 11,
++        .tilemapTop = 7,
++        .width = 4,
++#else
+         .tilemapLeft = 10,
+         .tilemapTop = 7,
+         .width = 6,
++#endif
+         .height = 6,
+         .paletteNum = 6,
+         .baseBlock = 209,
+@@ -686,6 +693,38 @@ static const struct WindowTemplate sPageSkillsTemplate[] =
+         .paletteNum = 6,
+         .baseBlock = 469,
+     },
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's value windows for the left stats and the Exp. Points: its
++    // digits are 8 pixels wide, so "154/154" and a 7-digit Exp. need 7 and 8 tiles.
++    // The right stats keep the international window, over the white value cells.
++    [PSS_DATA_WINDOW_SKILLS_STATS_LEFT] = {
++        .bg = 0,
++        .tilemapLeft = 15,
++        .tilemapTop = 7,
++        .width = 7,
++        .height = 6,
++        .paletteNum = 6,
++        .baseBlock = 489,
++    },
++    [PSS_DATA_WINDOW_SKILLS_STATS_RIGHT] = {
++        .bg = 0,
++        .tilemapLeft = 27,
++        .tilemapTop = 7,
++        .width = 3,
++        .height = 6,
++        .paletteNum = 6,
++        .baseBlock = 531,
++    },
++    [PSS_DATA_WINDOW_EXP] = {
++        .bg = 0,
++        .tilemapLeft = 21,
++        .tilemapTop = 14,
++        .width = 8,
++        .height = 4,
++        .paletteNum = 6,
++        .baseBlock = 549,
++    },
++#else
+     [PSS_DATA_WINDOW_SKILLS_STATS_LEFT] = {
+         .bg = 0,
+         .tilemapLeft = 16,
+@@ -713,6 +752,7 @@ static const struct WindowTemplate sPageSkillsTemplate[] =
+         .paletteNum = 6,
+         .baseBlock = 543,
+     },
++#endif
+ };
+ static const struct WindowTemplate sPageMovesTemplate[] = // This is used for both battle and contest moves
+ {
+@@ -3423,12 +3463,19 @@ static void PrintPageNamesAndStats(void)
+ 
+     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_INFO_RENTAL, gText_RentalPkmn, 0, 1, 0, 1);
+     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_INFO_TYPE, gText_TypeSlash, 0, 1, 0, 0);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // Where the Japanese ROM puts them in its label window.
++    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_HP4, 8, 1, 0, 1);
++    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_Attack3, 0, 17, 0, 1);
++    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_Defense3, 0, 33, 0, 1);
++#else
+     statsXPos = 6 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_HP4, 42);
+     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_HP4, statsXPos, 1, 0, 1);
+     statsXPos = 6 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_Attack3, 42);
+     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_Attack3, statsXPos, 17, 0, 1);
+     statsXPos = 6 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_Defense3, 42);
+     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_Defense3, statsXPos, 33, 0, 1);
++#endif
+     statsXPos = 2 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_SpAtk4, 36);
+     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT, gText_SpAtk4, statsXPos, 1, 0, 1);
+     statsXPos = 2 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_SpDef4, 36);
+@@ -4004,8 +4051,14 @@ static void BufferLeftColumnStats(void)
+ 
+     ConvertIntToDecimalStringN(currentHPString, sMonSummaryScreen->summary.currentHP, STR_CONV_MODE_RIGHT_ALIGN, 3);
+     ConvertIntToDecimalStringN(maxHPString, sMonSummaryScreen->summary.maxHP, STR_CONV_MODE_RIGHT_ALIGN, 3);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // Three digits, under the current HP, as the Japanese ROM prints them.
++    ConvertIntToDecimalStringN(attackString, sMonSummaryScreen->summary.atk, STR_CONV_MODE_RIGHT_ALIGN, 3);
++    ConvertIntToDecimalStringN(defenseString, sMonSummaryScreen->summary.def, STR_CONV_MODE_RIGHT_ALIGN, 3);
++#else
+     ConvertIntToDecimalStringN(attackString, sMonSummaryScreen->summary.atk, STR_CONV_MODE_RIGHT_ALIGN, 7);
+     ConvertIntToDecimalStringN(defenseString, sMonSummaryScreen->summary.def, STR_CONV_MODE_RIGHT_ALIGN, 7);
++#endif
+ 
+     DynamicPlaceholderTextUtil_Reset();
+     DynamicPlaceholderTextUtil_SetPlaceholderPtr(0, currentHPString);
+@@ -4022,7 +4075,11 @@ static void BufferLeftColumnStats(void)
+ 
+ static void PrintLeftColumnStats(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_LEFT), gStringVar4, 0, 1, 0, 0);
++#else
+     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_LEFT), gStringVar4, 4, 1, 0, 0);
++#endif
+ }
+ 
+ static void BufferRightColumnStats(void)
+@@ -4053,7 +4110,11 @@ static void BufferRightColumnStats(void)
+ 
+ static void PrintRightColumnStats(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_RIGHT), gStringVar4, 0, 1, 0, 0);
++#else
+     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_RIGHT), gStringVar4, 2, 1, 0, 0);
++#endif
+ }
+ 
+ #ifdef PLATFORM_3DS
+@@ -4075,16 +4136,29 @@ static void CycleSkillsStatsMode(void)
+ }
+ #endif
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++extern const u8 gText_EmptyString8[];
++#endif
++
+ static void PrintExpPointsNextLevel(void)
+ {
+     struct PokeSummary *sum = &sMonSummaryScreen->summary;
+     u8 windowId = AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_EXP);
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+     int x;
++#endif
+     u32 expToNextLevel;
+ 
+     ConvertIntToDecimalStringN(gStringVar1, sum->exp, STR_CONV_MODE_RIGHT_ALIGN, 7);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's layout: the right-aligned fields end at the window's edge,
++    // and the word "to go" (gText_EmptyString8 in that ROM) leads the next level's.
++    PrintTextOnWindow(windowId, gStringVar1, 8, 1, 0, 0);
++    PrintTextOnWindow(windowId, gText_EmptyString8, 0, 17, 0, 0);
++#else
+     x = GetStringRightAlignXOffset(FONT_NORMAL, gStringVar1, 42) + 2;
+     PrintTextOnWindow(windowId, gStringVar1, x, 1, 0, 0);
++#endif
+ 
+     if (sum->level < MAX_LEVEL)
+         expToNextLevel = gExperienceTables[gSpeciesInfo[sum->species].growthRate][sum->level + 1] - sum->exp;
+@@ -4092,8 +4166,12 @@ static void PrintExpPointsNextLevel(void)
+         expToNextLevel = 0;
+ 
+     ConvertIntToDecimalStringN(gStringVar1, expToNextLevel, STR_CONV_MODE_RIGHT_ALIGN, 6);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    PrintTextOnWindow(windowId, gStringVar1, 16, 17, 0, 0);
++#else
+     x = GetStringRightAlignXOffset(FONT_NORMAL, gStringVar1, 42) + 2;
+     PrintTextOnWindow(windowId, gStringVar1, x, 17, 0, 0);
++#endif
+ }
+ 
+ static void PrintBattleMoves(void)
+@@ -4198,6 +4276,15 @@ static void PrintMoveNameAndPP(u8 moveIndex)
+     PrintTextOnWindow(ppValueWindowId, text, x, moveIndex * 16 + 1, 0, ppState);
+ }
+ 
++// The values' column: the Japanese ROM's, where three of its 8-pixel digits fit.
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++#define POWER_ACC_VALUE_X 48
++#define POWER_ACC_VALUE_WIDTH 24
++#else
++#define POWER_ACC_VALUE_X 53
++#define POWER_ACC_VALUE_WIDTH 19
++#endif
++
+ static void PrintMovePowerAndAccuracy(u16 moveIndex)
+ {
+     const u8 *text;
+@@ -4208,7 +4295,7 @@ static void PrintMovePowerAndAccuracy(u16 moveIndex)
+ #else
+         u8 y = 0;
+ #endif
+-        FillWindowPixelRect(PSS_LABEL_WINDOW_MOVES_POWER_ACC, PIXEL_FILL(0), 53, y, 19, 32);
++        FillWindowPixelRect(PSS_LABEL_WINDOW_MOVES_POWER_ACC, PIXEL_FILL(0), POWER_ACC_VALUE_X, y, POWER_ACC_VALUE_WIDTH, 32);
+ 
+         if (gBattleMoves[moveIndex].power < 2)
+         {
+@@ -4220,7 +4307,7 @@ static void PrintMovePowerAndAccuracy(u16 moveIndex)
+             text = gStringVar1;
+         }
+ 
+-        PrintTextOnWindow(PSS_LABEL_WINDOW_MOVES_POWER_ACC, text, 53, y + 1, 0, 0);
++        PrintTextOnWindow(PSS_LABEL_WINDOW_MOVES_POWER_ACC, text, POWER_ACC_VALUE_X, y + 1, 0, 0);
+ 
+         if (gBattleMoves[moveIndex].accuracy == 0)
+         {
+@@ -4232,7 +4319,7 @@ static void PrintMovePowerAndAccuracy(u16 moveIndex)
+             text = gStringVar1;
+         }
+ 
+-        PrintTextOnWindow(PSS_LABEL_WINDOW_MOVES_POWER_ACC, text, 53, y + 17, 0, 0);
++        PrintTextOnWindow(PSS_LABEL_WINDOW_MOVES_POWER_ACC, text, POWER_ACC_VALUE_X, y + 17, 0, 0);
+     }
+ }
+ 
+diff --git a/src/pokenav_conditions_search_results.c b/src/pokenav_conditions_search_results.c
+index fcda1aa..57fdcf5 100644
+--- a/src/pokenav_conditions_search_results.c
++++ b/src/pokenav_conditions_search_results.c
+@@ -127,7 +127,11 @@ static const struct WindowTemplate sSearchResultListMenuWindowTemplate =
+ 
+ static const u8 sText_MaleSymbol[] = _("{COLOR_HIGHLIGHT_SHADOW}{LIGHT_RED}{WHITE}{GREEN}♂{COLOR_HIGHLIGHT_SHADOW}{DARK_GRAY}{WHITE}{LIGHT_GRAY}");
+ static const u8 sText_FemaleSymbol[] = _("{COLOR_HIGHLIGHT_SHADOW}{LIGHT_GREEN}{WHITE}{BLUE}♀{COLOR_HIGHLIGHT_SHADOW}{DARK_GRAY}{WHITE}{LIGHT_GRAY}");
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++static const u8 sText_NoGenderSymbol[] = _(" "); // 0x77 (UNK_SPACER) is a kana in the Japanese charset
++#else
+ static const u8 sText_NoGenderSymbol[] = _("{UNK_SPACER}");
++#endif
+ 
+ bool32 PokenavCallback_Init_ConditionSearch(void)
+ {
+diff --git a/src/pokenav_ribbons_list.c b/src/pokenav_ribbons_list.c
+index 44fd309..8b2a733 100644
+--- a/src/pokenav_ribbons_list.c
++++ b/src/pokenav_ribbons_list.c
+@@ -122,7 +122,12 @@ static const struct WindowTemplate sRibbonsMonListWindowTemplate =
+ 
+ static const u8 sText_MaleSymbol[] = _("{COLOR_HIGHLIGHT_SHADOW}{LIGHT_RED}{WHITE}{GREEN}♂{COLOR_HIGHLIGHT_SHADOW}{DARK_GRAY}{WHITE}{LIGHT_GRAY}");
+ static const u8 sText_FemaleSymbol[] = _("{COLOR_HIGHLIGHT_SHADOW}{LIGHT_GREEN}{WHITE}{BLUE}♀{COLOR_HIGHLIGHT_SHADOW}{DARK_GRAY}{WHITE}{LIGHT_GRAY}");
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++static const u8 sText_NoGenderSymbol[] = _(" "); // 0x77 (UNK_SPACER) is a kana in the Japanese charset
++static const u8 sText_RibbonCounter[] = _("こ"); // The counter word after the ribbon count
++#else
+ static const u8 sText_NoGenderSymbol[] = _("{UNK_SPACER}");
++#endif
+ 
+ bool32 PokenavCallback_Init_MonRibbonList(void)
+ {
+@@ -699,7 +704,9 @@ static void BufferRibbonMonInfoText(struct PokenavListItem *listItem, u8 *dest)
+ {
+     u8 gender;
+     u8 level;
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+     u8 *s;
++#endif
+     const u8 *genderStr;
+     struct PokenavMonListItem *item = (struct PokenavMonListItem *)listItem;
+ 
+@@ -721,7 +728,9 @@ static void BufferRibbonMonInfoText(struct PokenavListItem *listItem, u8 *dest)
+     }
+ 
+     StringGet_Nickname(gStringVar3);
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+     dest = GetStringClearToWidth(dest, FONT_NORMAL, gStringVar3, 60);
++#endif
+     switch (gender)
+     {
+     default:
+@@ -735,6 +744,22 @@ static void BufferRibbonMonInfoText(struct PokenavListItem *listItem, u8 *dest)
+         break;
+     }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's line, in its fixed-width glyphs: the nickname and the
++    // level padded to five and three characters, the ribbon count with its
++    // counter word.
++    dest = StringCopyPadded(dest, gStringVar3, CHAR_SPACE, 5);
++    *dest++ = CHAR_SPACE;
++    dest = StringCopy(dest, genderStr);
++    *dest++ = CHAR_SLASH;
++    *dest++ = CHAR_EXTRA_SYMBOL;
++    *dest++ = CHAR_LV_2;
++    ConvertIntToDecimalStringN(gStringVar1, level, STR_CONV_MODE_LEFT_ALIGN, 3);
++    dest = StringCopyPadded(dest, gStringVar1, CHAR_SPACE, 3);
++    *dest++ = CHAR_SPACE;
++    dest = ConvertIntToDecimalStringN(dest, item->data, STR_CONV_MODE_RIGHT_ALIGN, 2);
++    StringCopy(dest, sText_RibbonCounter);
++#else
+     s = StringCopy(gStringVar1, genderStr);
+     *s++ = CHAR_SLASH;
+     *s++ = CHAR_EXTRA_SYMBOL;
+@@ -742,4 +767,5 @@ static void BufferRibbonMonInfoText(struct PokenavListItem *listItem, u8 *dest)
+     ConvertIntToDecimalStringN(s, level, STR_CONV_MODE_LEFT_ALIGN, 3);
+     dest = GetStringClearToWidth(dest, FONT_NORMAL, gStringVar1, 54);
+     ConvertIntToDecimalStringN(dest, item->data, STR_CONV_MODE_RIGHT_ALIGN, 2);
++#endif
+ }
+diff --git a/src/pokenav_ribbons_summary.c b/src/pokenav_ribbons_summary.c
+index 4b368f5..baf28f0 100644
+--- a/src/pokenav_ribbons_summary.c
++++ b/src/pokenav_ribbons_summary.c
+@@ -867,7 +867,11 @@ static void AddRibbonSummaryMonNameWindow(struct Pokenav_RibbonsSummaryMenu *men
+ 
+ static const u8 sMaleIconString[] = _("{COLOR_HIGHLIGHT_SHADOW}{LIGHT_RED}{WHITE}{GREEN}♂{COLOR_HIGHLIGHT_SHADOW}{DARK_GRAY}{WHITE}{LIGHT_GRAY}");
+ static const u8 sFemaleIconString[] = _("{COLOR_HIGHLIGHT_SHADOW}{LIGHT_GREEN}{WHITE}{BLUE}♀{COLOR_HIGHLIGHT_SHADOW}{DARK_GRAY}{WHITE}{LIGHT_GRAY}");
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++static const u8 sGenderlessIconString[] = _(" "); // 0x77 (UNK_SPACER) is a kana in the Japanese charset
++#else
+ static const u8 sGenderlessIconString[] = _("{UNK_SPACER}");
++#endif
+ 
+ static void PrintRibbbonsSummaryMonInfo(struct Pokenav_RibbonsSummaryMenu *menu)
+ {
