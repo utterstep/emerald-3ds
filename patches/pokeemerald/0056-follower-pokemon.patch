@@ -263,7 +263,7 @@ diff --git a/src/follower_mon.c b/src/follower_mon.c
 new file mode 100644
 --- /dev/null
 +++ b/src/follower_mon.c
-@@ -0,0 +1,1575 @@
+@@ -0,0 +1,1577 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -1340,6 +1340,8 @@ new file mode 100644
 +    return "fr";
 +#elif GAME_LANGUAGE == LANGUAGE_ITALIAN
 +    return "it";
++#elif GAME_LANGUAGE == LANGUAGE_JAPANESE
++    return "ja";
 +#else
 +    return "en";
 +#endif

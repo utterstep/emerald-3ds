@@ -1,9 +1,10 @@
 # Japanese (BPEJ): draft text mapping
 
-**Status: draft, not a playable variant.** The builders, the web builder and
-`tools/bootstrap.py` do not accept the Japanese ROM. This page describes what the
-draft manifest covers, how it was made and checked, and what a Japanese build
-still needs.
+**Status: draft.** `tools/bootstrap.py`, the builders, the web builder and the
+release scripts accept the Japanese ROM ([Building the Japanese
+game](#building-the-japanese-game)); the game itself still needs the code
+changes listed at the end. This page describes what the draft manifest covers,
+how it was made and checked, how to build the game and what it still needs.
 
 The supported cartridge would be **Pocket Monsters Emerald (Japan, BPEJ)**,
 SHA-1 `d7cf8f156ba9c455d164e1ea780a6bf1945465c2` (No-Intro).
@@ -55,16 +56,55 @@ Conventions that differ from the Italian manifest:
 
 The working evidence quotes ROM text, so it stays out of the repository.
 
-## Staging, for inspection only
+## Building the Japanese game
+
+From a dump of your own cartridge (the SHA-1 above; a `.zip` holding it or a
+trimmed dump is accepted too), in a shell with devkitPro, a host compiler and
+Python ([DEVELOPMENT.md](DEVELOPMENT.md)):
 
 ```sh
-python tools/bootstrap.py
-python tools/localize_japanese.py --tree build/upstream --rom "/path/to/Pocket Monsters - Emerald (Japan).gba"
+python tools/bootstrap.py --make --japanese-rom "/path/to/Pocket Monsters - Emerald (Japan).gba"
+cd build/upstream/3ds_port
+make release pak PYTHON=python3
 ```
 
-This stages text only and leaves `GAME_LANGUAGE` unchanged. Graphics, credits
-and floors stay English, and the engine does not handle a Japanese game yet, so
-the tree is not a playable build. The next `bootstrap.py` run resets it.
+Copy `dist/Emerald3DS.3dsx`, `dist/Emerald3DS.smdh` and `build/emerald3ds.pak`
+to `/3ds/emerald3ds/` on the SD card. (`make` alone, without `release pak`,
+builds the development `emerald3ds.3dsx` with the data embedded.)
+
+- `--japanese-rom` works like `--spanish-rom`, `--french-rom` and
+  `--italian-rom`: the tree is reset to the pinned commit and patched, `make
+  tools` and `make generated` run, then `tools/localize_japanese.py --tree
+  build/upstream --rom ROM` stages what the Japanese manifest maps from the ROM,
+  and `--make` builds the 3DSX. Without `--make` it stops after staging, for
+  inspection. Every later run resets the tree again, and a change of language
+  (back to English included) also deletes `3ds_port/build`, `3ds_port/romfs`
+  and the staged art, so nothing of the other language is reused.
+- `make pak` writes the fingerprint of the ROM of the compiled
+  `GAME_LANGUAGE` into the pack (`LANGUAGE_JAPANESE`: BPEJ), and a Japanese
+  executable accepts only a pack made from the Japanese ROM
+  (`3ds_port/src/3ds_data.c`).
+- **Follower speech.** HeartGold/SoulSilver's Japanese texts are pinned in
+  `builder/emerald3ds_builder/followers_sources.py`
+  (`corpus/HeartGoldSoulSilver/ja-Hrkt_msg.txt` of the pinned poke-corpus,
+  kana only). Their follower messages are bank 258, the same 759 messages in
+  the same order as the other languages' bank 265. They become
+  `followers/text/ja.bin` in the Japanese character set (the kana of
+  `charmap.txt`'s Japanese section, 0x00 the full-width space; HGSS's line
+  breaks become spaces, where the game wraps the text), which a Japanese
+  build reads. The builders fetch the ROM's language only. A tree's own pack
+  has followers only when the RomFS has them, as for every language: before
+  `make release pak`, `python ../builder/emerald3ds_builder/followers.py --out
+  romfs --language ja` fetches the sprites and the Japanese texts (or
+  `FOLLOWERS_SRC` points the Makefile at a local copy).
+- **Builders and releases.** The builder (window and command line) and the
+  web builder recognise the dump and build from it when the release has a
+  Japanese variant, `payload/ja/` (`Emerald3DS-ja.3dsx` among the release
+  assets): `tools/build_release.py --japanese-rom ROM`
+  ([RELEASING.md](RELEASING.md)). That variant's recipe needs the Japanese
+  ROM's symbol addresses, `build/japanese-reference.s` staged from
+  `tools/locales/japanese-symbols.s.gz`; until the localization stages it,
+  `build_release.py` stops before the variant's recipe and says so.
 
 ## Not mapped yet
 
@@ -76,7 +116,7 @@ the tree is not a playable build. The next `bootstrap.py` run resets it.
 
 ## Code changes a Japanese build needs
 
-These are open for discussion; none is implemented.
+These are open for discussion; only the integration (7) is implemented.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
@@ -101,9 +141,10 @@ These are open for discussion; none is implemented.
    per-word phonemes; apprentices have a Japanese name only.
 6. **Port additions** that need their own Japanese text: the Exp. Share team
    message and the summary screen's category label.
-7. **Integration.** Builder and web builder acceptance of BPEJ, the ROM guard in
-   `3ds_data.c`, a `bootstrap.py` flag, release builds and Japanese follower
-   texts.
+7. **Integration** (done): builder and web builder acceptance of BPEJ, the ROM
+   guard in `3ds_data.c`, `bootstrap.py --japanese-rom`, the release's
+   `payload/ja/` (which still needs the reference symbols) and Japanese
+   follower texts.
 
 ## Findings about the existing locale manifests
 

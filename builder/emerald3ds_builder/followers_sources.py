@@ -1,4 +1,4 @@
-"""Files the builder fetches for followers, pinned by commit, size and SHA-256. Sprites have a key (national dex, _f female, _NN Unown letter) and HGSS's follower index.
+"""Files the builder fetches for followers, pinned by commit, size and SHA-256. Sprites have a key (national dex, _f female, _NN Unown letter) and HGSS's follower index; a text has its language and, when it is not 265, the bank of its follower messages.
 
 Generated from the files downloaded into the private workspace's
 private_assets/hgss_followers; plain data, edited only to re-pin."""
@@ -42,6 +42,14 @@ SOURCES = {
    "size": 2510234,
    "sha256": "9a771706be3c8270afd1aff69397f6526f6454e3730f4e1af9eb9e5743d73fd9",
    "language": "it"
+  },
+  {
+   "source": "poke-corpus",
+   "path": "corpus/HeartGoldSoulSilver/ja-Hrkt_msg.txt",
+   "size": 3540762,
+   "sha256": "c97720ce20beb5d09ef7d11ddc8cfae942a4b0205e2beca1789f97402341b92f",
+   "language": "ja",
+   "bank": 258
   },
   {
    "source": "poke-corpus",

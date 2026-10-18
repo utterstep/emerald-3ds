@@ -90,7 +90,8 @@ PAK_MAGIC = b"EM3DPAK\0"
 KNOWN_ROM_SHA1 = {"f3ae088181bf583e55daf962a92bb46f4f1d07b7",
                   "fe1558a3dcb0360ab558969e09b690888b846dd9",
                   "ca666651374d89ca439007bed54d839eb7bd14d0",
-                  "1692db322400c3141c5de2db38469913ceb1f4d4"}
+                  "1692db322400c3141c5de2db38469913ceb1f4d4",
+                  "d7cf8f156ba9c455d164e1ea780a6bf1945465c2"}
 
 
 @dataclass

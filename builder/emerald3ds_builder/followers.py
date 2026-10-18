@@ -17,7 +17,8 @@ Pack files:
     followers/mon/KEY.bin   one per sprite, KEY = national dex number "025",
                             "025_f" (female), "201_03" (Unown's letter 3)
     followers/text/LL.bin   the follower messages in one language (en, es,
-                            fr, it): HGSS's message bank 265
+                            fr, it, ja): HGSS's message bank 265 (258 in
+                            its Japanese texts, which are kana only)
     followers/sources.txt   the pinned commits
 
 A .bin (little endian):
@@ -43,10 +44,13 @@ A text .bin (little endian), the 759 messages of HGSS's bank 265 in its order:
         Pokemon's name is STR_VAR_1, the player's PLAYER, an item's
         STR_VAR_2; HGSS's line breaks are spaces (the game wraps the text to
         its own box, names expanded) and its page breaks the game's
-        paragraph code. HGSS's yes/no marker is dropped.
+        paragraph code. HGSS's yes/no marker is dropped. ja.bin is in the
+        Japanese game's character set (the kana of charmap.txt's Japanese
+        section, 0x00 its full-width space), which only a Japanese build
+        reads.
 
 Run as a script (no package imports) by the port's build for a development
-RomFS: python followers.py --sources DIR --out ROMFS_DIR
+RomFS: python followers.py --sources DIR --out ROMFS_DIR [--language ja]
 """
 
 from __future__ import annotations
@@ -65,9 +69,9 @@ MAGIC = b"FMN1"
 TEXT_MAGIC = b"FMT1"
 TEXT_BANK = 265
 TEXT_COUNT = 759
-LANGUAGES = ("en", "es", "fr", "it")
+LANGUAGES = ("en", "es", "fr", "it", "ja")
 # The fourth letter of the game code: the ROM's language.
-ROM_LANGUAGES = {"E": "en", "S": "es", "F": "fr", "I": "it"}
+ROM_LANGUAGES = {"E": "en", "S": "es", "F": "fr", "I": "it", "J": "ja"}
 FRAMES = 8
 HOSTS = ("https://raw.githubusercontent.com/{repo}/{commit}/{path}",
          "https://cdn.jsdelivr.net/gh/{repo}@{commit}/{path}")
@@ -197,21 +201,40 @@ _CHARS = {
     "û": 0x28, "ñ": 0x29, "¿": 0x51, "¡": 0x52, "â": 0x68, "í": 0x6F, "!": 0xAB, "?": 0xAC,
     ".": 0xAD, "-": 0xAE, "'": 0xB4, "’": 0xB4, ",": 0xB8, ":": 0xF0, "ü": 0xF6,
 }
+# The Japanese game's (charmap.txt's Japanese section): hiragana from 0x01 and
+# katakana from 0x51 in this order, then its punctuation. HGSS's Japanese
+# texts write the ellipsis as U+2026, the charmap as U+22EF; both are 0xB0.
+_HIRAGANA = ("あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"
+             "ぁぃぅぇぉゃゅょがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽっ")
+_KATAKANA = ("アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン"
+             "ァィゥェォャュョガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポッ")
+_JA_CHARS = {
+    **{ch: 0x01 + i for i, ch in enumerate(_HIRAGANA)},
+    **{ch: 0x51 + i for i, ch in enumerate(_KATAKANA)},
+    "　": 0x00, " ": 0x00, "！": 0xAB, "!": 0xAB, "？": 0xAC, "?": 0xAC, "。": 0xAD, "ー": 0xAE,
+    "⋯": 0xB0, "…": 0xB0,
+}
 _VARS = {"0101": b"\xFD\x02", "0103": b"\xFD\x01", "0108": b"\xFD\x03", "0200": b""}
 _TOKEN = re.compile(r"\[VAR ([0-9A-F]{4})\([^\]]*\)\]|\\(.)|(.)", re.S)
 
 
-def encode_message(text: str) -> bytes:
+def encode_message(text: str, language: str = "en") -> bytes:
     """One corpus line in the game's character set (see the module's text
-    format)."""
+    format); "ja" in the Japanese game's."""
+    japanese = language == "ja"
+    chars = _JA_CHARS if japanese else _CHARS
     out = bytearray()
     for var, esc, ch in _TOKEN.findall(text):
+        if japanese and "\uFF01" <= ch <= "\uFF5E":
+            ch = chr(ord(ch) - 0xFEE0)  # full-width Latin: the same codes, the Japanese font's glyphs
         if var:
             if var not in _VARS:
                 raise FollowersError("unknown text variable %s" % var)
             out += _VARS[var]
         elif esc:
             out.append(0xFB if esc == "c" else 0x00)
+        elif ch in chars:
+            out.append(chars[ch])
         elif "0" <= ch <= "9":
             out.append(0xA1 + ord(ch) - ord("0"))
         elif "A" <= ch <= "Z":
@@ -219,7 +242,7 @@ def encode_message(text: str) -> bytes:
         elif "a" <= ch <= "z":
             out.append(0xD5 + ord(ch) - ord("a"))
         else:
-            out.append(_CHARS.get(ch, 0xAC))
+            out.append(0xAC)
     # No space next to a page break, nor two in a row.
     data = re.sub(rb"\x00*\xFB\x00*", b"\xFB", bytes(out))
     data = re.sub(rb"\x00{2,}", b"\x00", data).strip(b"\x00")
@@ -239,12 +262,12 @@ def bank_messages(corpus: str, bank: int = TEXT_BANK) -> list[str]:
     return lines[start:end]
 
 
-def convert_texts(corpus: str) -> bytes:
-    """A corpus file's bank 265 as a text .bin."""
-    messages = bank_messages(corpus)
+def convert_texts(corpus: str, bank: int = TEXT_BANK, language: str = "en") -> bytes:
+    """A corpus file's follower bank (265, the Japanese file's 258) as a text .bin."""
+    messages = bank_messages(corpus, bank)
     if len(messages) != TEXT_COUNT:
-        raise FollowersError("bank %d has %d messages, not %d" % (TEXT_BANK, len(messages), TEXT_COUNT))
-    blobs = [encode_message(m) for m in messages]
+        raise FollowersError("bank %d has %d messages, not %d" % (bank, len(messages), TEXT_COUNT))
+    blobs = [encode_message(m, language) for m in messages]
     offsets, at = [], 8 + 4 * len(blobs)
     for b in blobs:
         offsets.append(at)
@@ -335,7 +358,7 @@ def default_fetcher() -> Fetcher:
 def build_section(fetcher: Fetcher, progress=None, languages=LANGUAGES) -> tuple[dict[str, bytes], dict]:
     """The pack's followers/ files, and a summary {sprites, texts, missing,
     downloaded}. `languages`: the texts to fetch (the ROM's own for a
-    player's pack, all four for a development build).
+    player's pack, all of them for a development build).
 
     A file that cannot be had is left out (a species without its sprite has
     no follower, a language without its text a follower that does not speak);
@@ -373,7 +396,8 @@ def build_section(fetcher: Fetcher, progress=None, languages=LANGUAGES) -> tuple
         try:
             if data is None:
                 raise FollowersError("not fetched")
-            files["%stext/%s.bin" % (PREFIX, entry["language"])] = convert_texts(data.decode("utf-8"))
+            files["%stext/%s.bin" % (PREFIX, entry["language"])] = convert_texts(
+                data.decode("utf-8"), entry.get("bank", TEXT_BANK), entry["language"])
             texts += 1
         except (FollowersError, UnicodeDecodeError):
             missing.append("text_" + entry["language"])
@@ -403,11 +427,13 @@ def main(argv=None) -> int:
                     help="a local copy laid out as private_assets/hgss_followers")
     ap.add_argument("--out", type=Path, required=True, help="the RomFS folder (followers/ goes in it)")
     ap.add_argument("--offline", action="store_true", help="never use the network")
+    ap.add_argument("--language", action="append", choices=LANGUAGES,
+                    help="only this language's texts (repeatable; default: all)")
     args = ap.parse_args(argv)
     fetcher = default_fetcher()
     fetcher.local[:0] = args.sources
     fetcher.network = not args.offline
-    files, info = build_section(fetcher)
+    files, info = build_section(fetcher, languages=args.language or LANGUAGES)
     for rel, data in files.items():
         path = args.out / rel
         if path.is_file() and path.read_bytes() == data:
