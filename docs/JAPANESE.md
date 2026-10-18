@@ -66,8 +66,8 @@ glyph one pixel row higher than the decomp's copy) and `fonts/short.fwjpnfont`
 screen's tiles (the dakuten and handakuten keys), keyboard tilemaps, page swap frame
 and full-width underscore, with 0075 the Union Room chat's keyboard tiles and
 tilemap, and with 0076 Easy Chat's rectangle cursor (whole rectangles instead of
-mirrored halves). 98 graphics are staged in all, 66 of them LZ77 streams that
-staging also decompresses.
+mirrored halves) and window (the footer's labels are tiles). 100 graphics are
+staged in all, 68 of them LZ77 streams that staging also decompresses.
 
 Skipped: the five Latin fonts (the Japanese ROM has none; it prints with the
 Japanese fonts) and the port's `italian_the_end.bin.lz` (the Japanese credits
@@ -229,18 +229,19 @@ the integration (8). The other items are open.
    checked in an emulator: Easy Chat's keyboard. Its letter mode picks words by
    kana row (あいうえお なにぬねの やゆよ わ / かきくけこ はひふへほ そのた / …)
    from 45 lists instead of 27, group names and words are in three columns, and
-   the rectangle cursor is one sprite of the Japanese graphics. *Done* (0075),
-   checked in an emulator with the link step skipped: the Union Room chat's
-   keyboard. Pages of hiragana, katakana, Latin letters and digits (the
-   `gText_EmptyTextInput*` rows), symbols and the registered texts; R gives the
-   last character its next form from a staged table, with a hiragana, katakana
-   or Latin label; keys, chat lines and the text typed are in the small font at
-   the Japanese spacing, and the chat's graphics are staged. Open: Walda's
+   the rectangle cursor is one sprite of the Japanese graphics. Its main screen
+   too: phrases of 3 words a row (3x2 and 3x3 instead of 2x3 and 2x5) in the
+   Japanese frames, the words run on a tile a character, and the footer is the
+   Japanese window graphics. *Done* (0075), checked in an emulator with the link
+   step skipped: the Union Room chat's keyboard. Pages of hiragana, katakana,
+   Latin letters and digits (the `gText_EmptyTextInput*` rows), symbols and the
+   registered texts; R gives the last character its next form from a staged
+   table, with a hiragana, katakana or Latin label; keys, chat lines and the text
+   typed are in the small font at the Japanese spacing, and the chat's graphics
+   are staged. Open: Walda's
    cipher (`walda_phrase.c`: the Japanese one reads 12 kana of 6 bits, so no
-   phrase is accepted yet), Easy Chat's main screen (the Japanese phrase frames
-   hold 3 words a row in other templates, its footer and window graphics differ:
-   `PrintCurrentPhrase`, `sEasyChatScreenTemplates`, `gEasyChatWindow_*`); the
-   chat's received lines are not checked on screen yet (they need a link).
+   phrase is accepted yet); the chat's received lines are not checked on screen
+   yet (they need a link).
 3. **Port UI** (done). The bottom screen and the HD battle box draw both glyph
    sets (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and every
    `CTR_TEXT` has its Japanese label: kana only, in the game's own words where
