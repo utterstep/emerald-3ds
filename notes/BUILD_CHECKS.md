@@ -132,3 +132,22 @@ pack made from the Japanese ROM. Instead of the release files, the development b
 writes `/3ds/emerald3ds/port.log`. Any later `bootstrap.py` run resets build/upstream;
 running it without `--japanese-rom` goes back to English.
 
+
+## Round two (feature/japanese-build 1f87d15)
+
+Merged from five branches: ja/gfx (graphics inventory, title logo 0083), ja/logic
+(Trainer Hill 0063, Walda 0064, port texts 0066), ja/kana (keyboards 0074-0076),
+ja/polish (main-menu hang 0067, number padding 0068, placeholder code 0077,
+Pokédex units 0078, text placement 0079). 0074 was regenerated on top of 0064; the
+manifests were merged three-way and re-pinned with tools/repin_locales.py.
+
+Checked on the merged branch: all 73 patch steps apply to a fresh tree; Spanish
+449/449, French 454/454, Italian 449/449, Japanese 432/432 pins match; staging
+from the cartridge runs; a GBA build of the staged tree links and 23 screens
+reached by scripted input in mGBA compare with the cartridge (title, continue,
+naming, summary, Pokédex, bag, PokéNav, Easy Chat, ...); all 368 3DS units
+compile with arm-none-eabi-gcc and the libctru headers in Japanese and English,
+with no diagnostic only in Japanese; builder unit tests pass; release_audit
+--strict --rom clean. Each branch also showed its changed units' objects
+identical in English, Spanish, French and Italian. Not checked: devkitARM's own
+compiler, the link of the 3DSX, a console. Tools: notes/tools/.

@@ -1,0 +1,26 @@
+# Summary pages: info, skills, battle moves, contest moves, a move's details
+include boot_pc
+include start_menu
+tap DOWN 10
+tap A 120
+tap A 30
+tap A 120
+shot info
+tap RIGHT 40
+shot skills
+tap RIGHT 40
+shot battle_moves
+tap A 40
+shot battle_move_detail
+tap B 40
+tap RIGHT 40
+shot contest_moves
+tap A 40
+shot contest_move_detail
+tap B 40
+tap DOWN 40
+shot next_mon_contest
+tap LEFT 40
+tap LEFT 40
+tap LEFT 40
+shot next_mon_info

@@ -1,0 +1,12 @@
+# The berries pocket's CHECK TAG screen, and the next berry's
+include boot_pc
+include start_menu
+repeat 2 tap DOWN 10
+tap A 120
+repeat 3 tap RIGHT 40
+tap A 30
+shot berry_menu
+tap A 120
+shot berry_tag
+tap DOWN 60
+shot berry_tag_next

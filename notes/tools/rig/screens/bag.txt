@@ -1,0 +1,19 @@
+# Bag: every pocket, the item menu, the berry tag
+include boot_pc
+include start_menu
+repeat 2 tap DOWN 10
+tap A 120
+shot items
+repeat 8 tap DOWN 8
+shot items_scrolled
+tap A 30
+shot item_menu
+tap B 30
+tap RIGHT 40
+shot balls
+tap RIGHT 40
+shot tms
+tap RIGHT 40
+shot berries
+tap RIGHT 40
+shot key_items

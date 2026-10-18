@@ -1,0 +1,9 @@
+# Start menu in the Pokemon Center, and the save prompt's info window
+include boot_pc
+shot field
+include start_menu
+shot start_menu
+repeat 5 tap DOWN 10
+shot start_menu_save
+tap A 60
+shot save_prompt

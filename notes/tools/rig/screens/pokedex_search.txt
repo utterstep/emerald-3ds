@@ -1,0 +1,19 @@
+# Pokedex: the list's START menu, the search screen (SELECT) and a search option's list
+include boot_pc
+include start_menu
+tap A 200
+tap START 60
+shot start_menu
+tap B 60
+tap SELECT 120
+shot search
+tap A 60
+shot search_conditions
+tap DOWN 20
+shot search_color
+tap A 60
+shot color_options
+tap B 60
+tap B 60
+tap RIGHT 30
+shot search_shift

@@ -1,0 +1,7 @@
+# Main menu with a save (CONTINUE window), without the build's workaround
+sav {SAVES}/pc.sav
+run 300
+repeat 10 tap START 30
+shot continue
+run 60
+shot continue_later

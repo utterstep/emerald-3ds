@@ -1,0 +1,19 @@
+# Pokedex: list, an entry, its area map, cry and size pages
+include boot_pc
+include start_menu
+tap A 200
+shot list
+repeat 3 tap DOWN 10
+shot list_moved
+tap A 150
+shot entry
+tap A 120
+shot area
+tap B 120
+tap RIGHT 20
+tap A 120
+shot cry
+tap B 120
+tap RIGHT 20
+tap A 120
+shot size

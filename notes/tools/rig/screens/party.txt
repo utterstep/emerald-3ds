@@ -1,0 +1,13 @@
+# Party menu, a mon's action menu, the mail's "read" path
+include boot_pc
+include start_menu
+tap DOWN 10
+tap A 120
+shot party
+tap A 30
+shot party_actions
+tap B 30
+repeat 2 tap DOWN 10
+shot party_altaria
+tap A 30
+shot altaria_actions

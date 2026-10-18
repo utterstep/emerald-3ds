@@ -1,0 +1,28 @@
+# A wild battle (Wurmple Lv2) from a script poked into RAM: the action and move menus, Swampert's first move, the Exp. Points message
+include boot_pc
+w8 {gDecompressionBuffer} b6
+w8 {gDecompressionBuffer+0x1} 22
+w8 {gDecompressionBuffer+0x2} 01
+w8 {gDecompressionBuffer+0x3} 02
+w8 {gDecompressionBuffer+0x4} 00
+w8 {gDecompressionBuffer+0x5} 00
+w8 {gDecompressionBuffer+0x6} b7
+w8 {gDecompressionBuffer+0x7} 02
+w32 {sGlobalScriptContext+0x8} {gDecompressionBuffer}
+w8 {sGlobalScriptContext+0x1} 01
+w8 {sGlobalScriptContext} 00
+w8 {sGlobalScriptContextStatus} 00
+run 600
+tap A 600
+shot action_menu
+tap A 60
+shot move_menu
+tap A 60
+run 300
+shot attack
+run 300
+shot fainted
+run 300
+shot exp_message
+tap A 300
+shot after_exp

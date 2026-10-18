@@ -1,0 +1,9 @@
+# Options screen (start menu), a changed setting
+include boot_pc
+include start_menu
+repeat 6 tap DOWN 10
+tap A 120
+shot options
+tap DOWN 20
+tap RIGHT 20
+shot options_changed

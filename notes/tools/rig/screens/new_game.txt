@@ -1,0 +1,20 @@
+# New game: Birch's speech, the gender choice, the player naming screen
+run 300
+repeat 10 tap START 30
+shot main_menu
+tap A 60
+repeat 30 tap B 18
+shot birch
+repeat 120 tap B 18
+shot gender
+tap A 30
+repeat 40 tap B 18
+run 60
+shot naming
+tap A 30
+tap A 30
+shot typed
+tap SELECT 40
+shot page2
+tap SELECT 40
+shot page3

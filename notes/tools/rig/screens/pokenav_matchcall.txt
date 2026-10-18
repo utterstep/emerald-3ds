@@ -1,0 +1,26 @@
+# PokeNav: Match Call list, a trainer's entry, ribbons list and a mon's ribbons
+include boot_pc
+include start_menu
+repeat 3 tap DOWN 10
+tap A 200
+repeat 2 tap DOWN 30
+shot main_matchcall
+tap A 120
+shot matchcall_list
+tap DOWN 20
+tap A 60
+shot matchcall_entry
+tap A 200
+run 200
+shot matchcall_call
+tap A 120
+tap A 120
+tap A 120
+tap B 60
+tap B 120
+tap DOWN 30
+shot main_ribbons
+tap A 120
+shot ribbons_list
+tap A 120
+shot ribbons_mon

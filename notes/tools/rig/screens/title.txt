@@ -1,0 +1,10 @@
+# Copyright screen, intro, title screen (no save)
+run 120
+shot copyright
+run 400
+shot intro
+repeat 3 tap START 30
+run 60
+shot title
+run 200
+shot title_later

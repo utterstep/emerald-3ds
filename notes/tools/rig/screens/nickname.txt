@@ -1,0 +1,14 @@
+# Nickname naming screen: Slateport's Name Rater renames Swampert; typing, keyboard pages
+include boot_namerater
+repeat 12 tap A 60
+run 60
+shot naming
+tap A 30
+tap A 30
+shot typed
+tap SELECT 40
+shot page2
+tap SELECT 40
+shot page3
+tap SELECT 40
+shot page1_again

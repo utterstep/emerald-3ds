@@ -1,0 +1,14 @@
+# PokeNav: main menu, condition menu and the party condition graph
+include boot_pc
+include start_menu
+repeat 3 tap DOWN 10
+tap A 200
+shot main_menu
+tap DOWN 30
+shot main_condition
+tap A 90
+shot condition_menu
+tap A 150
+shot condition_graph
+tap DOWN 60
+shot condition_graph_next

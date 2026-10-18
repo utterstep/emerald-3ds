@@ -1,0 +1,30 @@
+# Slot machine: into Mauville's Game Corner, the machine at (8,9) from its seat
+include boot_mauville
+hold UP 20
+run 120
+shot game_corner
+hold UP 16
+run 20
+tap LEFT 5
+hold LEFT 32
+run 30
+tap A 60
+shot machine
+tap A 300
+shot slots
+tap A 120
+shot after_a
+tap DOWN 60
+shot bet
+tap A 60
+shot spin
+run 120
+shot spinning
+tap A 40
+tap A 40
+tap A 120
+shot stopped
+tap SELECT 120
+shot info
+tap B 120
+shot quit_question

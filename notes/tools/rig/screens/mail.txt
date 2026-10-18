@@ -1,0 +1,12 @@
+# Reading the mail Altaria holds (party menu, MAIL, READ)
+include boot_pc
+include start_menu
+tap DOWN 10
+tap A 120
+repeat 2 tap DOWN 10
+tap A 30
+repeat 3 tap DOWN 10
+tap A 30
+shot mail_menu
+tap A 120
+shot mail

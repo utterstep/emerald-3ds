@@ -1,0 +1,9 @@
+# PokeNav: the Hoenn map, and zoomed in
+include boot_pc
+include start_menu
+repeat 3 tap DOWN 10
+tap A 200
+tap A 200
+shot hoenn_map
+tap A 90
+shot hoenn_map_zoomed

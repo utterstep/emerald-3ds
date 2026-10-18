@@ -1,0 +1,6 @@
+# Main menu with a save, the build's STR_VAR workaround applied (what it draws then)
+sav {SAVES}/pc.sav
+include boot_save
+shot continue
+tap DOWN 20
+shot new_game_selected

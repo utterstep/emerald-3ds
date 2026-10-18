@@ -1,0 +1,8 @@
+# Trainer card, front and back
+include boot_pc
+include start_menu
+repeat 4 tap DOWN 10
+tap A 120
+shot front
+tap A 90
+shot back

@@ -1,0 +1,27 @@
+# Easy Chat: Mauville's old man (the bard) in the Pokemon Center: a new song's lyrics
+include boot_pc
+tap LEFT 5
+hold LEFT 80
+tap UP 20
+tap A 60
+shot bard_question
+tap A 700
+tap A 120
+shot song_comment
+tap A 120
+shot change_question
+tap A 200
+shot easy_chat
+tap A 90
+shot groups
+tap RIGHT 30
+tap DOWN 30
+shot groups_moved
+tap A 90
+shot words
+tap B 60
+tap SELECT 60
+shot alphabet_mode
+tap B 60
+tap B 60
+shot quit_question

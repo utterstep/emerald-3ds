@@ -1,0 +1,18 @@
+# Contest (Lilycove, Normal rank Cool, Swampert): the stage, appeals, then the results
+include boot_contest
+tapuntil A 40 {gMain+4} {CB2_ContestMain|1} ffffffff 20000
+run 300
+shot stage
+tap A 120
+shot move_menu
+tapuntil A 40 {gMain+4} {CB2_ShowContestResults|1} ffffffff 40000
+run 150
+shot results_round1
+tap A 400
+shot results_round2
+tap A 400
+shot results_ranking
+tap A 400
+shot results_winner
+tap A 400
+shot results_end

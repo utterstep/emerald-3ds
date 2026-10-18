@@ -1,0 +1,23 @@
+# Pokeblock case (from the bag's key items), a block's menu, feeding: the condition screen
+include boot_pc
+include start_menu
+repeat 2 tap DOWN 10
+tap A 120
+repeat 4 tap RIGHT 40
+repeat 3 tap DOWN 10
+tap A 30
+shot case_item_menu
+tap A 200
+shot case
+tap DOWN 20
+shot case_moved
+tap A 30
+shot block_menu
+tap A 200
+shot feed_select
+tap A 60
+shot feed_confirm
+tap A 300
+shot feeding
+run 300
+shot fed
