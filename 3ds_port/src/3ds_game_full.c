@@ -727,7 +727,7 @@ void CtrGame_Init(void)
      * is zeroes and MP2K would run a silent, malformed track. */
     if (!CtrSongs_Init())
         CtrAssets_Fatal("the song bundle is required before AgbMain");
-    Port_PreloadLatinFonts();
+    Port_PreloadFonts();
     /* The bottom screen decodes its graphics once, here, off any frame. */
     CtrBottom_Init();
     /* Before AgbMain, because CheckForFlashMemory asks Port_SaveIsAvailable

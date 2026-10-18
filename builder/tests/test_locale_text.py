@@ -1,4 +1,5 @@
 """Test the port's UTF-8 adapter without the SDK or any cartridge data."""
+import re
 import shutil
 import subprocess
 import tempfile
@@ -44,6 +45,58 @@ int main(void)
     const uint8_t italian[] = {0x1E, 0x22, 0x09, 0x0D};
     const uint8_t punctuation[] = {0x2D, 0xB8, 0x5B};
     uint8_t tiny[4] = {0x77, 0x77, 0x77, 0x77};
+    uint8_t small[6];
+
+    /* Kana, Japanese punctuation and full-width forms: Japanese set only. */
+    assert(CtrLocale_Glyph(0x3042, 1) == 0x01 && CtrLocale_Glyph(0x3093, 1) == 0x2E);   /* あ ん */
+    assert(CtrLocale_Glyph(0x3063, 1) == 0x50 && CtrLocale_Glyph(0x30C3, 1) == 0xA0);   /* っ ッ */
+    assert(CtrLocale_Glyph(0x30A2, 1) == 0x51 && CtrLocale_Glyph(0x30DD, 1) == 0x9F);   /* ア ポ */
+    assert(CtrLocale_Glyph(0x308E, 1) == CTR_GLYPH_NONE);                               /* ゎ */
+    assert(CtrLocale_Glyph(0x3002, 1) == 0xAD && CtrLocale_Glyph(0x30FC, 1) == 0xAE);   /* 。 ー */
+    assert(CtrLocale_Glyph(0x300C, 1) == 0xB3 && CtrLocale_Glyph(0x5186, 1) == 0xB7);   /* 「 円 */
+    assert(CtrLocale_Glyph(0xFF21, 1) == 0xBB && CtrLocale_Glyph(0xFF5A, 1) == 0xEE);   /* Ａ ｚ */
+    assert(CtrLocale_Glyph(0xFF10, 1) == 0xA1 && CtrLocale_Glyph(0xFF01, 1) == 0xAB);   /* ０ ！ */
+    assert(CtrLocale_Glyph(0x3000, 1) == 0x00 && CtrLocale_Glyph('.', 1) == 0xB8);
+    assert(CtrLocale_Glyph(0x3042, 0) == CTR_GLYPH_NONE && CtrLocale_Glyph(0xFF21, 0) == CTR_GLYPH_NONE);
+    assert(CtrLocale_Glyph(0xE9, 1) == CTR_GLYPH_NONE && CtrLocale_Glyph(0xE9, 0) == 0x1B);
+
+#if GAME_LANGUAGE == LANGUAGE_JAPANESE
+    {
+        /* Labels without kana keep the Latin glyphs and switch back. */
+        const uint8_t ok[] = {0xFC, 0x16, 0xC9, 0xC5, 0xFC, 0x15};
+        const uint8_t accent[] = {0xFC, 0x16, 0x06, 0xE8, 0x1B, 0xFC, 0x15};
+        const uint8_t kana[] = {0x9F, 0x59, 0x73, 0x7E, 0x00, 0xA4, 0xBE, 0xAD};
+        const uint8_t mixed[] = {0x9F, 0x59, 0x73, 0x7E, 0xFC, 0x16, 0x1B, 0xFC, 0x15};
+        expect("OK", ok, sizeof(ok));
+        expect("Été", accent, sizeof(accent));
+        expect("ポケモン 3D。", kana, sizeof(kana));
+        expect("ポケモンé", mixed, sizeof(mixed));
+        expect("", fallback, 0);
+        /* Never a switch without its way back. */
+        memset(small, 0x77, sizeof(small));
+        assert(CtrLocale_ToGame(small, 5, "é") == 0 && small[0] == 0xff && small[1] == 0x77);
+        assert(CtrLocale_ToGame(small, 6, "éé") == 5);
+        assert(small[0] == 0xFC && small[1] == 0x16 && small[2] == 0x1B && small[3] == 0xFC && small[4] == 0x15
+               && small[5] == 0xff);
+        assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT", "JA"), "JA") == 0);
+        assert(CTR_LOCALE_JAPANESE_FIRST);
+        return 0;
+    }
+#else
+    {
+        /* A Japanese label in a Latin build switches to its glyphs and back. */
+        const uint8_t kana[] = {0xFC, 0x15, 0x9F, 0x59, 0x73, 0x7E, 0x00, 0xA4, 0xBE, 0xAD, 0xFC, 0x16};
+        const uint8_t mixed[] = {0xFC, 0x15, 0x9F, 0x59, 0x73, 0x7E, 0xFC, 0x16, 0x1B};
+        const uint8_t wide[] = {0xFC, 0x15, 0xBB, 0xBC, 0xA2, 0xFC, 0x16};
+        expect("ポケモン 3D。", kana, sizeof(kana));
+        expect("ポケモンé", mixed, sizeof(mixed));
+        expect("ＡＢ１", wide, sizeof(wide));
+        memset(small, 0x77, sizeof(small));
+        assert(CtrLocale_ToGame(small, 5, "あ") == 0 && small[0] == 0xff);
+        assert(CtrLocale_ToGame(small, 6, "ああ") == 5 && small[2] == 0x01 && small[4] == 0x16);
+        assert(!CTR_LOCALE_JAPANESE_FIRST);
+    }
+#endif
 
     expect("ABab09 /-.:!?'*", ascii, sizeof(ascii));
     expect("ÀÂÇÈÉÊËÎÏÔÙÛàâçèéêëîïôùû", french, sizeof(french));
@@ -66,13 +119,13 @@ int main(void)
     assert(tiny[0] == 0x1B && tiny[1] == 0xff);
 
 #if GAME_LANGUAGE == LANGUAGE_FRENCH
-    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT"), "FR") == 0);
+    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT", "JA"), "FR") == 0);
 #elif GAME_LANGUAGE == LANGUAGE_SPANISH
-    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT"), "ES") == 0);
+    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT", "JA"), "ES") == 0);
 #elif GAME_LANGUAGE == LANGUAGE_ITALIAN
-    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT"), "IT") == 0);
+    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT", "JA"), "IT") == 0);
 #else
-    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT"), "EN") == 0);
+    assert(strcmp(CTR_TEXT("EN", "ES", "FR", "IT", "JA"), "EN") == 0);
 #endif
     return 0;
 }
@@ -81,11 +134,11 @@ int main(void)
             root = Path(temp)
             (root / "constants").mkdir()
             (root / "constants/global.h").write_text(
-                "#define LANGUAGE_ENGLISH 2\n#define LANGUAGE_FRENCH 3\n"
+                "#define LANGUAGE_JAPANESE 1\n#define LANGUAGE_ENGLISH 2\n#define LANGUAGE_FRENCH 3\n"
                 "#define LANGUAGE_ITALIAN 4\n#define LANGUAGE_SPANISH 7\n", encoding="utf-8")
             source = root / "locale.c"
             source.write_text(code, encoding="utf-8")
-            for language in (2, 3, 4, 7):
+            for language in (1, 2, 3, 4, 7):
                 with self.subTest(language=language):
                     executable = root / "locale.exe"
                     subprocess.run([CC, "-std=c99", "-Wall", "-Wextra", "-Werror",
@@ -93,3 +146,81 @@ int main(void)
                                     "-DGAME_LANGUAGE=" + str(language), str(source),
                                     "-o", str(executable)], check=True)
                     subprocess.run([str(executable)], check=True)
+
+    def test_every_ctr_text_label_has_its_glyphs(self):
+        """The port's own labels (CTR_TEXT's five languages, 3ds_port/src): each
+        character has a glyph in its set, so none is drawn as '?'; the Japanese
+        one is kana (drawn in the Japanese glyphs, 8 px each) and fits the widest
+        cell (13 glyphs) and Ascii's 40-byte ring in a Japanese build."""
+        call = re.compile(r'CTR_TEXT\("([^"]*)", "([^"]*)", "([^"]*)", "([^"]*)", "([^"]*)"\)')
+        kana = re.compile(r"[ぁ-んァ-ン]")
+        labels = []
+        for path in sorted((ROOT / "3ds_port/src").glob("*.c")):
+            for match in call.finditer(path.read_text(encoding="utf-8")):
+                labels.append(match.groups())
+        self.assertGreater(len(labels), 70)
+        checks = []
+        for languages in labels:
+            japanese = languages[4]
+            self.assertTrue(kana.search(japanese), japanese)
+            self.assertLessEqual(len(japanese), 13, japanese)
+            for label in languages:
+                literal = label.replace("\\", "\\\\").replace('"', '\\"')
+                checks.append('    check("%s", %d);' % (literal, len(label)))
+        code = r'''
+#include <assert.h>
+#include <string.h>
+#include "3ds_locale.h"
+#include "3ds_locale_text.h"
+static void check(const char *label, size_t points)
+{
+    uint8_t out[40];
+    size_t n = CtrLocale_ToGame(out, sizeof(out), label), i;
+    /* Every code point written (no truncation), none as the '?' stand-in. */
+    assert(n >= points && n <= points + 4);
+    for (i = 0; i < n; ++i)
+        if (out[i] == 0xFC) ++i;
+        else assert(out[i] != 0xAC || strchr(label, '?'));
+}
+int main(void)
+{
+%s
+    return 0;
+}
+''' % "\n".join(checks)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "constants").mkdir()
+            (root / "constants/global.h").write_text(
+                "#define LANGUAGE_JAPANESE 1\n#define LANGUAGE_ENGLISH 2\n#define LANGUAGE_FRENCH 3\n"
+                "#define LANGUAGE_ITALIAN 4\n#define LANGUAGE_SPANISH 7\n", encoding="utf-8")
+            source, executable = root / "labels.c", root / "labels.exe"
+            source.write_text(code, encoding="utf-8")
+            for language in (1, 2):
+                with self.subTest(language=language):
+                    subprocess.run([CC, "-std=c99", "-Wall", "-Wextra", "-Werror", "-I" + str(root),
+                                    "-I" + str(ROOT / "3ds_port/include"), "-DGAME_LANGUAGE=" + str(language),
+                                    str(source), "-o", str(executable)], check=True)
+                    subprocess.run([str(executable)], check=True)
+
+    @unittest.skipUnless((ROOT / "charmap.txt").exists(), "requires the patched source tree")
+    def test_japanese_codes_follow_the_charmap(self):
+        """Every kana and Japanese punctuation mark of the tree's charmap.txt."""
+        checks, section = [], ""
+        for line in (ROOT / "charmap.txt").read_text(encoding="utf-8").splitlines():
+            if line.startswith("@"):
+                section = line
+                continue
+            match = re.match(r"^'(.)'\s*=\s*([0-9A-F]{2})\s*$", line.strip())
+            if match and any(name in section for name in ("Hiragana", "Katakana", "Japanese")):
+                checks.append("    assert(CtrLocale_Glyph(0x%X, 1) == 0x%s);" % (ord(match.group(1)), match.group(2)))
+        self.assertGreater(len(checks), 160)
+        code = ('#include <assert.h>\n#include "3ds_locale_text.h"\nint main(void)\n{\n'
+                + "\n".join(checks) + "\n    return 0;\n}\n")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source, executable = root / "charmap.c", root / "charmap.exe"
+            source.write_text(code, encoding="utf-8")
+            subprocess.run([CC, "-std=c99", "-Wall", "-Wextra", "-Werror", "-I" + str(ROOT / "include"),
+                            "-I" + str(ROOT / "3ds_port/include"), str(source), "-o", str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
