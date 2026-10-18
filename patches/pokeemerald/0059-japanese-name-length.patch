@@ -1,0 +1,54 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: 5-character names in Japanese builds
+Applies after 0058-japanese-native-names.patch; apply with tools/bootstrap.py.
+
+The Japanese ROM's naming screen takes 5-character player and Pokémon names (the
+gender icon follows the shorter field); the save keeps the international buffers.
+
+diff --git a/src/naming_screen.c b/src/naming_screen.c
+index 3928ed5..8226f8b 100644
+--- a/src/naming_screen.c
++++ b/src/naming_screen.c
+@@ -50,6 +50,16 @@ enum {
+ #define KBCOL_COUNT 8
+ #endif
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's player and Pokémon names are 5 characters long (the save keeps
++// the international buffers).
++#define PLAYER_NAME_ENTRY_LENGTH 5
++#define POKEMON_NAME_ENTRY_LENGTH 5
++#else
++#define PLAYER_NAME_ENTRY_LENGTH PLAYER_NAME_LENGTH
++#define POKEMON_NAME_ENTRY_LENGTH POKEMON_NAME_LENGTH
++#endif
++
+ enum {
+     GFXTAG_BACK_BUTTON,
+     GFXTAG_OK_BUTTON,
+@@ -1782,7 +1792,7 @@ static void DrawGenderIcon(void)
+             StringCopy(text, gText_FemaleSymbol);
+             isFemale = TRUE;
+         }
+-        AddTextPrinterParameterized3(sNamingScreen->windows[WIN_TEXT_ENTRY], FONT_NORMAL, (POKEMON_NAME_LENGTH * 4) + 64, 1, sGenderColors[isFemale], TEXT_SKIP_DRAW, text);
++        AddTextPrinterParameterized3(sNamingScreen->windows[WIN_TEXT_ENTRY], FONT_NORMAL, (POKEMON_NAME_ENTRY_LENGTH * 4) + 64, 1, sGenderColors[isFemale], TEXT_SKIP_DRAW, text);
+     }
+ }
+ 
+@@ -2098,7 +2108,7 @@ static void UNUSED Debug_NamingScreenNickname(void)
+ static const struct NamingScreenTemplate sPlayerNamingScreenTemplate =
+ {
+     .copyExistingString = FALSE,
+-    .maxChars = PLAYER_NAME_LENGTH,
++    .maxChars = PLAYER_NAME_ENTRY_LENGTH,
+     .iconFunction = 1,
+     .addGenderIcon = FALSE,
+     .initialPage = KBPAGE_LETTERS_UPPER,
+@@ -2120,7 +2130,7 @@ static const struct NamingScreenTemplate sPCBoxNamingTemplate =
+ static const struct NamingScreenTemplate sMonNamingScreenTemplate =
+ {
+     .copyExistingString = FALSE,
+-    .maxChars = POKEMON_NAME_LENGTH,
++    .maxChars = POKEMON_NAME_ENTRY_LENGTH,
+     .iconFunction = 3,
+     .addGenderIcon = TRUE,
+     .initialPage = KBPAGE_LETTERS_UPPER,

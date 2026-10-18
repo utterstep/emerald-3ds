@@ -1,13 +1,14 @@
 # Japanese (BPEJ)
 
-**Status: experimental, not yet playable.** `tools/localize_japanese.py` stages
-the Japanese game data from the player's ROM: texts, graphics, credits, the
-Easy Chat id lists and `GAME_LANGUAGE`. `tools/bootstrap.py`, the builders, the
-web builder and the release scripts accept that ROM ([Building the Japanese
-game](#building-the-japanese-game)). The engine does not handle a Japanese
-game yet (see [Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)),
-and nothing has been tested on a console. This page describes what the manifest
-covers, how it was made and checked, how to build the game and what is left.
+**Status: experimental, not tested on a console.** `tools/localize_japanese.py`
+stages the Japanese game data from the player's ROM: texts, graphics, credits,
+the Easy Chat id lists and `GAME_LANGUAGE`. Patches 0057–0061 and 0070–0073 make
+a Japanese build behave like the Japanese game, and `tools/bootstrap.py`, the
+builders, the web builder and the release scripts accept that ROM ([Building
+the Japanese game](#building-the-japanese-game)). Some screens and features are
+still open ([Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)).
+This page describes what the manifest covers, how it was made and checked, how
+to build the game and what is left.
 
 The supported cartridge is **Pocket Monsters Emerald (Japan, BPEJ)**,
 SHA-1 `d7cf8f156ba9c455d164e1ea780a6bf1945465c2` (No-Intro).
@@ -185,17 +186,26 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
 
 ## Code changes a Japanese build needs
 
-Done in this repository: the port UI (3) and the integration (8), and patches
-0070 (credits page delay), 0071 (contest results title bar), 0072 (menu info
-icons) and 0073 (title screen version logo palettes), each behind
-`GAME_LANGUAGE == LANGUAGE_JAPANESE`. The other items are open.
+Done in this repository, marked *done* below: patches 0057–0061 (item 1, the
+name length of item 2, item 4 but the Pokédex page, item 5 but the bard, the
+credits' scene pages and the two-floor Trainer Hill), patches 0070–0073
+(credits page delay, contest results title bar, menu info icons, title screen
+version logo palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the
+port UI (3) and the integration (8). The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
    nickname in switch-to-Japanese/back-to-Latin codes, `ConvertInternationalString`
    pads Japanese names, and so on (about 70 `LANGUAGE_JAPANESE` and 40
    `GAME_LANGUAGE` sites). The Latin fonts have no Japanese counterpart.
-2. **Names and keyboards.** Player and Pokémon names of 5 characters; kana pages
+   *Done* (0057, 0058): printers and `GetStringWidth` start in the Japanese
+   glyphs with the Japanese ROM's font metrics; `IsForeignScriptLanguage`
+   (`string_util.h`) is false, so no name is wrapped or padded, as in that ROM,
+   which shows other games' Latin names in its own full-width Latin glyphs;
+   `IsForeignGameLanguage` keeps the Latin-script games out of the Union Room
+   and the trainer records.
+2. **Names and keyboards.** Player and Pokémon names of 5 characters (*done*,
+   0059; Walda's phrase, 12 characters in that ROM, still takes 15); kana pages
    for the naming screen, the Union Room chat and the Easy Chat keyboard (a
    45-entry index by kana rows instead of A–Z), with their graphics above.
 3. **Port UI** (done). The bottom screen and the HD battle box draw both glyph
@@ -208,13 +218,21 @@ icons) and 0073 (title screen version logo palettes), each behind
    no space; the contest "Appeal no. X" lines have no number; mail puts the
    sender after the name; the diploma prints the player name and Pokédex type
    separately; two Lilycove Lady texts use other placeholders; Battle Pyramid
-   arrows are a control code.
+   arrows are a control code. *Done* (0061): the five built lines follow the
+   Japanese ROM's code, mail with its layout and signature window; the Lilycove
+   Lady texts use the same placeholders, only more or fewer times, and the
+   Pyramid's escape-code arrows draw as they are in Japanese glyphs, so neither
+   needs code. Still open: the Pokédex page's Japanese layout and metric units.
 5. **Content and logic.** Japanese Trainer Hill has no "closed until the game is
    cleared" state and only its two-floor challenge; only the international game
    refuses record mixing with a Japanese game; the bard sings each kana through a
    vowel table instead of per-word phonemes; apprentices have a Japanese name
    only. The Japanese credits change scenes at their own pages (5, 9, 14, 20, 25,
-   30, 37, 42) where the decomp spaces them by `PAGE_COUNT / 9`.
+   30, 37, 42) where the decomp spaces them by `PAGE_COUNT / 9`. *Done* (0060):
+   no closed state and no refusal; the wild/foe prefix stays in front of the
+   name (0058); apprentices need no code (`GetApprenticeNameInLanguage` gives
+   the Japanese name, slot 0). Open: the bard, the credits' scene pages and the
+   two-floor challenge (the four international modes stay, with English floors).
 6. **Screens with another layout:** the graphics listed above.
 7. **Port additions** that need their own Japanese text: the Exp. Share team
    message and the summary screen's category label.

@@ -1,0 +1,201 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese builds draw in the Japanese glyphs
+Applies after 0056-follower-pokemon.patch; apply with tools/bootstrap.py.
+
+With GAME_LANGUAGE == LANGUAGE_JAPANESE, text printers and GetStringWidth start in
+the Japanese glyph sets (the international code starts in Latin and switches for the
+names of Japanese games with EXT_CTRL_CODE_JPN; EXT_CTRL_CODE_ENG still switches to
+Latin). The fonts take the Japanese ROM's own metrics and cursor sizes, its glyph
+heights (16 rows normal, 12 short), its small-tsu widths in the short font and its
+fixed-width first short-font copy. Other languages are unchanged.
+
+diff --git a/src/text.c b/src/text.c
+index b91830b..c28d237 100644
+--- a/src/text.c
++++ b/src/text.c
+@@ -37,6 +37,10 @@ static u32 GetGlyphWidth_Normal(u16, bool32);
+ static u32 GetGlyphWidth_Short(u16, bool32);
+ static u32 GetGlyphWidth_Narrow(u16, bool32);
+ static u32 GetGlyphWidth_SmallNarrow(u16, bool32);
++static u32 GetShortJapaneseGlyphWidth(u16);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++static u32 GetGlyphWidth_ShortFixed(u16, bool32);
++#endif
+ #ifdef PORT_BRIDGE
+ static const u8 *ResolveTextString(const u8 *str);
+ #endif
+@@ -90,7 +94,11 @@ static const struct GlyphWidthFunc sGlyphWidthFuncs[] =
+     { FONT_SMALL,        GetGlyphWidth_Small },
+     { FONT_NORMAL,       GetGlyphWidth_Normal },
+     { FONT_SHORT,        GetGlyphWidth_Short },
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    { FONT_SHORT_COPY_1, GetGlyphWidth_ShortFixed },
++#else
+     { FONT_SHORT_COPY_1, GetGlyphWidth_Short },
++#endif
+     { FONT_SHORT_COPY_2, GetGlyphWidth_Short },
+     { FONT_SHORT_COPY_3, GetGlyphWidth_Short },
+     { FONT_BRAILLE,      GetGlyphWidth_Braille },
+@@ -122,6 +130,54 @@ struct
+ 
+ static const u8 sKeypadIconTiles[] = INCBIN_U8("graphics/fonts/keypad_icons.4bpp");
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese game draws its own glyphs, so text printers and the width functions
++// start in them; the international games start in the Latin glyphs and switch to the
++// Japanese ones for the names of Japanese games (EXT_CTRL_CODE_JPN/ENG).
++#define NATIVE_GLYPHS_JAPANESE TRUE
++// The Japanese ROM draws the whole 16-row cell of its normal glyphs and 12 rows of its
++// short ones (the international code draws 15 and 14 rows of the same glyphs).
++#define JAPANESE_NORMAL_GLYPH_HEIGHT 16
++#define JAPANESE_SHORT_GLYPH_HEIGHT 12
++
++// The Japanese ROM's own font metrics and cursor sizes: 8-pixel cells for the small
++// and normal fonts, 10-pixel cells and letter spacing for the short ones (menus place
++// their text one cell right of the cursor, so the cell width matters). That ROM has no
++// narrow fonts; here they draw the normal and small Japanese glyphs and take those
++// widths. Braille keeps the international line spacing its window is sized for.
++static const struct FontInfo sFontInfos[] =
++{
++    //                     fontFunction        width height spacing lines unk  fg bg shadow
++    [FONT_SMALL]        = { FontFunc_Small,       8, 12, 0, 2,  0, 2, 1, 3 },
++    [FONT_NORMAL]       = { FontFunc_Normal,      8, 16, 0, 0,  0, 2, 1, 3 },
++    [FONT_SHORT]        = { FontFunc_Short,      10, 12, 1, 2,  0, 2, 1, 3 },
++    [FONT_SHORT_COPY_1] = { FontFunc_ShortCopy1, 10, 12, 1, 2,  0, 2, 1, 3 },
++    [FONT_SHORT_COPY_2] = { FontFunc_ShortCopy2, 10, 12, 0, 0,  0, 2, 1, 3 },
++    [FONT_SHORT_COPY_3] = { FontFunc_ShortCopy3, 10, 12, 0, 0,  0, 2, 1, 3 },
++    [FONT_BRAILLE]      = { FontFunc_Braille,     8, 16, 0, 8,  0, 2, 1, 3 },
++    [FONT_NARROW]       = { FontFunc_Narrow,      8, 16, 0, 0,  0, 2, 1, 3 },
++    [FONT_SMALL_NARROW] = { FontFunc_SmallNarrow, 8,  8, 0, 0,  0, 2, 1, 3 },
++    [FONT_BOLD]         = { NULL,                 8,  8, 0, 0,  0, 1, 2, 15 },
++};
++
++static const u8 sMenuCursorDimensions[][2] =
++{
++    [FONT_SMALL]        = { 8,  12 },
++    [FONT_NORMAL]       = { 8,  16 },
++    [FONT_SHORT]        = { 6,  12 },
++    [FONT_SHORT_COPY_1] = { 6,  12 },
++    [FONT_SHORT_COPY_2] = { 6,  12 },
++    [FONT_SHORT_COPY_3] = { 6,  12 },
++    [FONT_BRAILLE]      = { 8,  16 },
++    [FONT_NARROW]       = { 8,  16 },
++    [FONT_SMALL_NARROW] = { 8,   8 },
++    [FONT_BOLD]         = {}
++};
++#else
++#define NATIVE_GLYPHS_JAPANESE FALSE
++#define JAPANESE_NORMAL_GLYPH_HEIGHT 15
++#define JAPANESE_SHORT_GLYPH_HEIGHT 14
++
+ static const struct FontInfo sFontInfos[] =
+ {
+     [FONT_SMALL] = {
+@@ -239,6 +295,7 @@ static const u8 sMenuCursorDimensions[][2] =
+     [FONT_SMALL_NARROW] = { 8,   8 },
+     [FONT_BOLD]         = {}
+ };
++#endif
+ 
+ static const u16 sFontBoldJapaneseGlyphs[] = INCBIN_U16("graphics/fonts/bold.hwjpnfont");
+ 
+@@ -297,7 +354,7 @@ bool16 AddTextPrinter(struct TextPrinterTemplate *printerTemplate, u8 speed, voi
+ #endif
+     sTempTextPrinter.callback = callback;
+     sTempTextPrinter.minLetterSpacing = 0;
+-    sTempTextPrinter.japanese = 0;
++    sTempTextPrinter.japanese = NATIVE_GLYPHS_JAPANESE;
+ 
+     GenerateFontHalfRowLookupTable(printerTemplate->fgColor, printerTemplate->bgColor, printerTemplate->shadowColor);
+     if (speed != TEXT_SKIP_DRAW && speed != 0)
+@@ -1183,6 +1240,11 @@ static u16 RenderText(struct TextPrinter *textPrinter)
+         case FONT_SHORT_COPY_2:
+         case FONT_SHORT_COPY_3:
+             DecompressGlyph_Short(currChar, textPrinter->japanese);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++            // Fixed-width in the Japanese ROM, as GetGlyphWidth_ShortFixed measures it.
++            if (textPrinter->japanese && subStruct->fontId == FONT_SHORT_COPY_1)
++                gCurGlyph.width = 10;
++#endif
+             break;
+         case FONT_NARROW:
+             DecompressGlyph_Narrow(currChar, textPrinter->japanese);
+@@ -1390,7 +1452,7 @@ s32 GetStringWidth(u8 fontId, const u8 *str, s16 letterSpacing)
+     int glyphWidth;
+     s32 width;
+ 
+-    isJapanese = 0;
++    isJapanese = NATIVE_GLYPHS_JAPANESE;
+     minGlyphWidth = 0;
+ 
+     func = GetFontWidthFunc(fontId);
+@@ -1812,7 +1874,7 @@ static void DecompressGlyph_Narrow(u16 glyphId, bool32 isJapanese)
+         DecompressGlyphTile(glyphs, gCurGlyph.gfxBufferTop);
+         DecompressGlyphTile(glyphs + 0x80, gCurGlyph.gfxBufferBottom);
+         gCurGlyph.width = 8;
+-        gCurGlyph.height = 15;
++        gCurGlyph.height = JAPANESE_NORMAL_GLYPH_HEIGHT;
+     }
+     else
+     {
+@@ -1901,6 +1963,17 @@ static u32 GetGlyphWidth_SmallNarrow(u16 glyphId, bool32 isJapanese)
+         return gFontSmallNarrowLatinGlyphWidths[glyphId];
+ }
+ 
++static u32 GetShortJapaneseGlyphWidth(u16 glyphId)
++{
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's width table gives the small tsu (hiragana and katakana) 9
++    // pixels; the international table gives them 10.
++    if (glyphId == 0x50 || glyphId == 0xA0)
++        return 9;
++#endif
++    return gFontShortJapaneseGlyphWidths[glyphId];
++}
++
+ static void DecompressGlyph_Short(u16 glyphId, bool32 isJapanese)
+ {
+     const u16 *glyphs;
+@@ -1917,8 +1990,8 @@ static void DecompressGlyph_Short(u16 glyphId, bool32 isJapanese)
+         DecompressGlyphTile(glyphs + 0x8, gCurGlyph.gfxBufferTop + 8);
+         DecompressGlyphTile(glyphs + 0x80, gCurGlyph.gfxBufferBottom);    // gCurGlyph + 0x20
+         DecompressGlyphTile(glyphs + 0x88, gCurGlyph.gfxBufferBottom + 8);    // gCurGlyph + 0x60
+-        gCurGlyph.width = gFontShortJapaneseGlyphWidths[glyphId];
+-        gCurGlyph.height = 14;
++        gCurGlyph.width = GetShortJapaneseGlyphWidth(glyphId);
++        gCurGlyph.height = JAPANESE_SHORT_GLYPH_HEIGHT;
+     }
+     else
+     {
+@@ -1950,11 +2023,22 @@ static void DecompressGlyph_Short(u16 glyphId, bool32 isJapanese)
+ static u32 GetGlyphWidth_Short(u16 glyphId, bool32 isJapanese)
+ {
+     if (isJapanese == TRUE)
+-        return gFontShortJapaneseGlyphWidths[glyphId];
++        return GetShortJapaneseGlyphWidth(glyphId);
+     else
+         return gFontShortLatinGlyphWidths[glyphId];
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese ROM's first copy of the short font is fixed-width.
++static u32 GetGlyphWidth_ShortFixed(u16 glyphId, bool32 isJapanese)
++{
++    if (isJapanese == TRUE)
++        return 10;
++    else
++        return gFontShortLatinGlyphWidths[glyphId];
++}
++#endif
++
+ static void DecompressGlyph_Normal(u16 glyphId, bool32 isJapanese)
+ {
+     const u16 *glyphs;
+@@ -1970,7 +2054,7 @@ static void DecompressGlyph_Normal(u16 glyphId, bool32 isJapanese)
+         DecompressGlyphTile(glyphs, gCurGlyph.gfxBufferTop);
+         DecompressGlyphTile(glyphs + 0x80, gCurGlyph.gfxBufferBottom);
+         gCurGlyph.width = 8;
+-        gCurGlyph.height = 15;
++        gCurGlyph.height = JAPANESE_NORMAL_GLYPH_HEIGHT;
+     }
+     else
+     {
