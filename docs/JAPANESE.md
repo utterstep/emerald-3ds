@@ -92,7 +92,10 @@ Graphics that need code, with what differs:
   modes (Normal, Variety, Unique, Expert): it has one challenge of two floors,
   the decomp's unused `sChallenge_JPDefault`/`sFloors_JPDefault`, whose data
   equals the decomp's but with another trainer record layout (944-byte floors).
-  The four tables stay English (`floors_skipped`).
+  The four tables stay English (`floors_skipped`). Patch 0063 runs that challenge
+  from the decomp's own data: compiled and converted to the 944-byte layout, the
+  header, both floors and their mazes equal the ROM's (0x5faf38), so nothing is
+  staged.
 - **Easy Chat id lists.** The four move and Pokémon lists that
   `tools/locale_lists.py` reorders are at ROM offsets 0x574584, 0x57861c,
   0x578750 and 0x578b1c (the groups table's slots 0, 18, 19 and 21), with the
@@ -186,9 +189,9 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
 
 ## Code changes a Japanese build needs
 
-Done in this repository, marked *done* below: patches 0057–0061 (item 1, the
-name length of item 2, item 4 but the Pokédex page, item 5 but the bard, the
-credits' scene pages and the two-floor Trainer Hill), patches 0070–0073
+Done in this repository, marked *done* below: patches 0057–0061 and 0063 (item 1,
+the name length of item 2, item 4 but the Pokédex page, item 5 but the bard and
+the credits' scene pages), patches 0070–0073
 (credits page delay, contest results title bar, menu info icons, title screen
 version logo palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the
 port UI (3) and the integration (8). The other items are open.
@@ -231,8 +234,15 @@ port UI (3) and the integration (8). The other items are open.
    30, 37, 42) where the decomp spaces them by `PAGE_COUNT / 9`. *Done* (0060):
    no closed state and no refusal; the wild/foe prefix stays in front of the
    name (0058); apprentices need no code (`GetApprenticeNameInLanguage` gives
-   the Japanese name, slot 0). Open: the bard, the credits' scene pages and the
-   two-floor challenge (the four international modes stay, with English floors).
+   the Japanese name, slot 0). *Done* (0063): the two-floor challenge, which the
+   attendant starts without asking for a tag match type; the challenge id in the
+   save (`trainerHill.unused`) keeps one best time, reset with the prize when the
+   challenge changes (the international game keeps a time per mode instead), and
+   the time board lists each floor's two trainers above the clear time, as that
+   ROM does. The e-Reader challenges that ROM can also load are not supported (the
+   port cannot scan cards); the time board's window keeps the international width
+   (26 tiles; the Japanese one is 27, its text fits in both). Open: the bard and
+   the credits' scene pages.
 6. **Screens with another layout:** the graphics listed above.
 7. **Port additions** that need their own Japanese text: the Exp. Share team
    message and the summary screen's category label.
