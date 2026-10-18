@@ -11,13 +11,23 @@ names as they are (wrapped, the Latin ones would not fit buffers sized for
 Union Room and the trainer records, as the international games keep the Japanese
 ones out. Link contests keep a Japanese partner's name as it came, and the battle
 text keeps the wild/foe prefix in front of the name as the Japanese ROM does.
-Other languages are unchanged.
+string_util.h includes constants/global.h for the language constants, as
+mini_printf.c includes it without global.h. Other languages are unchanged.
 
 diff --git a/include/string_util.h b/include/string_util.h
-index 0a8a99f..86de5cc 100644
+index 0a8a99f..3d92d83 100644
 --- a/include/string_util.h
 +++ b/include/string_util.h
-@@ -43,4 +43,32 @@ s32 StringCompareWithoutExtCtrlCodes(const u8 *str1, const u8 *str2);
+@@ -1,6 +1,8 @@
+ #ifndef GUARD_STRING_UTIL_H
+ #define GUARD_STRING_UTIL_H
+ 
++#include "constants/global.h" // GAME_LANGUAGE and LANGUAGE_*: mini_printf.c has no global.h
++
+ extern u8 gStringVar1[0x100];
+ extern u8 gStringVar2[0x100];
+ extern u8 gStringVar3[0x100];
+@@ -43,4 +45,32 @@ s32 StringCompareWithoutExtCtrlCodes(const u8 *str1, const u8 *str2);
  void ConvertInternationalString(u8 *s, u8 language);
  void StripExtCtrlCodes(u8 *str);
  
