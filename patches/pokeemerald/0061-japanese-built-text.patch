@@ -1,0 +1,273 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Text the Japanese ROM builds in code
+Applies after 0060-japanese-game-logic.patch; apply with tools/bootstrap.py.
+
+Where the Japanese ROM assembles a line from pieces its texts follow: the trade
+question names both Pokémon, the player's then the partner's; the Pokédex
+category takes the word for Pokémon with no space; the contest's appeal number goes in
+front of its text; mail uses that ROM's layout and windows with the sender's name
+before the word for "from"; the diploma prints the name, the Pokédex and the signature
+apart. Battle Pyramid arrows (an escape code in that ROM's texts) and the Lilycove
+Lady's texts need no code. Other languages are unchanged.
+
+diff --git a/src/contest.c b/src/contest.c
+index 6b65407..35f267c 100644
+--- a/src/contest.c
++++ b/src/contest.c
+@@ -1470,6 +1470,24 @@ static void VBlankCB_Contest(void)
+     ScanlineEffect_InitHBlankDmaTransfer();
+ }
+ 
++// "Appeal no. 1!" and the move question under it, in gDisplayedStringBattle. The
++// international texts take the number as {STR_VAR_1}; the Japanese ones follow the
++// number, which that ROM writes in front of them.
++static inline void BufferAppealNumberText(void)
++{
++    u8 *dest = gDisplayedStringBattle;
++
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    dest = ConvertIntToDecimalStringN(dest, eContest.appealNumber + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
++#else
++    ConvertIntToDecimalStringN(gStringVar1, eContest.appealNumber + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
++#endif
++    if (!Contest_IsMonsTurnDisabled(gContestPlayerMonIndex))
++        StringCopy(dest, gText_AppealNumWhichMoveWillBePlayed);
++    else
++        StringCopy(dest, gText_AppealNumButItCantParticipate);
++}
++
+ static void Task_DisplayAppealNumberText(u8 taskId)
+ {
+     if (gTasks[taskId].data[0] == 0)
+@@ -1478,11 +1496,7 @@ static void Task_DisplayAppealNumberText(u8 taskId)
+         gBattle_BG2_Y = 0;
+         ContestDebugDoPrint();
+         DmaCopy32Defvars(3, gPlttBufferUnfaded, eContestTempSave.cachedPlttBufferUnfaded, PLTT_SIZE);
+-        ConvertIntToDecimalStringN(gStringVar1, eContest.appealNumber + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
+-        if (!Contest_IsMonsTurnDisabled(gContestPlayerMonIndex))
+-            StringCopy(gDisplayedStringBattle, gText_AppealNumWhichMoveWillBePlayed);
+-        else
+-            StringCopy(gDisplayedStringBattle, gText_AppealNumButItCantParticipate);
++        BufferAppealNumberText();
+         ContestClearGeneralTextWindow();
+         StringExpandPlaceholders(gStringVar4, gDisplayedStringBattle);
+         Contest_StartTextPrinter(gStringVar4, TRUE);
+@@ -1580,11 +1594,7 @@ static void Task_HandleMoveSelectInput(u8 taskId)
+             // Cancel move selection
+             PlaySE(SE_SELECT);
+             SetBottomSliderHeartsInvisibility(FALSE);
+-            ConvertIntToDecimalStringN(gStringVar1, eContest.appealNumber + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
+-            if (!Contest_IsMonsTurnDisabled(gContestPlayerMonIndex))
+-                StringCopy(gDisplayedStringBattle, gText_AppealNumWhichMoveWillBePlayed);
+-            else
+-                StringCopy(gDisplayedStringBattle, gText_AppealNumButItCantParticipate);
++            BufferAppealNumberText();
+             ContestClearGeneralTextWindow();
+             StringExpandPlaceholders(gStringVar4, gDisplayedStringBattle);
+             Contest_StartTextPrinter(gStringVar4, FALSE);
+diff --git a/src/diploma.c b/src/diploma.c
+index 2a18867..3de5658 100644
+--- a/src/diploma.c
++++ b/src/diploma.c
+@@ -19,6 +19,12 @@
+ extern const u8 gText_DexNational[];
+ extern const u8 gText_DexHoenn[];
+ extern const u8 gText_PokedexDiploma[];
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++extern const u8 gJPText_Player[];
++extern const u8 gJPText_Sama[];
++extern const u8 gJPText_GameFreak[];
++extern const u8 gText_DiplomaEmpty[];
++#endif
+ 
+ static void MainCB2(void);
+ static void Task_DiplomaFadeIn(u8);
+@@ -127,6 +133,29 @@ static void Task_DiplomaFadeOut(u8 taskId)
+ 
+ static void DisplayDiplomaText(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's layout: its diploma text has no placeholders. The player's
++    // name, in the red of gText_DiplomaEmpty, goes between gJPText_Player and
++    // gJPText_Sama; the Pokédex's name over the text's indented first line.
++    u8 name[PLAYER_NAME_LENGTH + 8];
++
++    PrintDiplomaText((u8 *)gJPText_Player, 0, 2);
++    StringCopy_PlayerName(StringCopy(name, gText_DiplomaEmpty), gSaveBlock2Ptr->playerName);
++    PrintDiplomaText(name, 0x30, 2);
++    PrintDiplomaText((u8 *)gJPText_Sama, 0x58, 2);
++    PrintDiplomaText((u8 *)gText_PokedexDiploma, 0, 0x22);
++    if (HasAllMons())
++    {
++        SetGpuReg(REG_OFFSET_BG1HOFS, DISPLAY_WIDTH + 16);
++        PrintDiplomaText((u8 *)gText_DexNational, 0, 0x22);
++    }
++    else
++    {
++        SetGpuReg(REG_OFFSET_BG1HOFS, 0);
++        PrintDiplomaText((u8 *)gText_DexHoenn, 0, 0x22);
++    }
++    PrintDiplomaText((u8 *)gJPText_GameFreak, 0x30, 0x72);
++#else
+     if (HasAllMons())
+     {
+         SetGpuReg(REG_OFFSET_BG1HOFS, DISPLAY_WIDTH + 16);
+@@ -139,6 +168,7 @@ static void DisplayDiplomaText(void)
+     }
+     StringExpandPlaceholders(gStringVar4, gText_PokedexDiploma);
+     PrintDiplomaText(gStringVar4, 0, 1);
++#endif
+     PutWindowTilemap(0);
+     CopyWindowToVram(0, COPYWIN_FULL);
+ }
+diff --git a/src/international_string_util.c b/src/international_string_util.c
+index a937266..429cffe 100644
+--- a/src/international_string_util.c
++++ b/src/international_string_util.c
+@@ -86,8 +86,13 @@ int Intl_GetListMenuWidth(const struct ListMenuTemplate *listMenu)
+ void CopyMonCategoryText(int dexNum, u8 *dest)
+ {
+     u8 *str = StringCopy(dest, gPokedexEntries[dexNum].categoryName);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese word follows the category with no space: one word.
++    StringCopy(str, gText_Pokemon);
++#else
+     *str = CHAR_SPACE;
+     StringCopy(str + 1, gText_Pokemon);
++#endif
+ }
+ 
+ u8 *GetStringClearToWidth(u8 *dest, int fontId, const u8 *str, int totalStringWidth)
+diff --git a/src/mail.c b/src/mail.c
+index e1aaa66..370952d 100644
+--- a/src/mail.c
++++ b/src/mail.c
+@@ -107,6 +107,28 @@ static const struct BgTemplate sBgTemplates[] = {
+ };
+ 
+ static const struct WindowTemplate sWindowTemplates[] = {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese ROM's mail: the words (three lines of three, sMailLayouts_Wide) and,
++    // in a window of its own, the signature.
++    {
++        .bg = 0,
++        .tilemapLeft = 3,
++        .tilemapTop = 4,
++        .width = 24,
++        .height = 10,
++        .paletteNum = 15,
++        .baseBlock = 1
++    },
++    {
++        .bg = 0,
++        .tilemapLeft = 15,
++        .tilemapTop = 15,
++        .width = 13,
++        .height = 3,
++        .paletteNum = 15,
++        .baseBlock = 0xF2
++    },
++#else
+     {
+         .bg = 0,
+         .tilemapLeft = 2,
+@@ -116,6 +138,7 @@ static const struct WindowTemplate sWindowTemplates[] = {
+         .paletteNum = 15,
+         .baseBlock = 1
+     },
++#endif
+     DUMMY_WIN_TEMPLATE
+ };
+ 
+@@ -450,7 +473,9 @@ void ReadMail(struct Mail *mail, void (*exitCallback)(void), bool8 hasText)
+ 
+     sMailRead = AllocZeroed(sizeof(*sMailRead));
+     sMailRead->language = GAME_LANGUAGE;
+-    sMailRead->international = TRUE;
++    // The Japanese ROM takes the other branches below: its own layouts and the
++    // sender's name followed by gText_FromSpace.
++    sMailRead->international = (GAME_LANGUAGE != LANGUAGE_JAPANESE);
+     sMailRead->parserSingle = CopyEasyChatWord;
+     sMailRead->parserMultiple = ConvertEasyChatWordsToString;
+     if (IS_ITEM_MAIL(mail->itemId))
+@@ -466,7 +491,7 @@ void ReadMail(struct Mail *mail, void (*exitCallback)(void), bool8 hasText)
+     {
+     case FALSE:
+     default:
+-        // Never reached. JP only?
++        // The Japanese ROM's layouts (Japanese builds only).
+         sMailRead->layout = &sMailLayouts_Wide[sMailRead->mailType];
+         break;
+     case TRUE:
+@@ -655,8 +680,8 @@ static void BufferMailText(void)
+     ptr = StringCopy(sMailRead->playerName, sMailRead->mail->playerName);
+     if (!sMailRead->international)
+     {
+-        // Never reached
+-        StringCopy(ptr, gText_FromSpace); // Odd, "From" text is already printed in PrintMailText
++        // Japanese builds only: the sender's name, then gText_FromSpace
++        StringCopy(ptr, gText_FromSpace);
+         sMailRead->signatureWidth = sMailRead->layout->signatureWidth - (StringLength(sMailRead->playerName) * 8 - 96);
+     }
+     else
+@@ -669,11 +694,13 @@ static void BufferMailText(void)
+ static void PrintMailText(void)
+ {
+     u16 i;
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+     u8 signature[32];
+-    u8 y;
+     u8 *bufptr;
+     s32 box_x;
+     s32 box_y;
++#endif
++    u8 y;
+ 
+     y = 0;
+     PutWindowTilemap(0);
+@@ -688,11 +715,17 @@ static void PrintMailText(void)
+         AddTextPrinterParameterized3(0, FONT_NORMAL, sMailRead->layout->lines[i].xOffset + sMailRead->layout->wordsXPos, y + sMailRead->layout->wordsYPos, sTextColors, 0, sMailRead->message[i]);
+         y += sMailRead->layout->lines[i].height;
+     }
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // As the Japanese ROM prints it: the name and gText_FromSpace (BufferMailText), in
++    // the signature window.
++    AddTextPrinterParameterized3(1, FONT_NORMAL, sMailRead->signatureWidth, sMailRead->layout->signatureYPos, sTextColors, 0, sMailRead->playerName);
++#else
+     bufptr = StringCopy(signature, gText_FromSpace);
+     StringCopy(bufptr, sMailRead->playerName);
+     box_x = GetStringCenterAlignXOffset(FONT_NORMAL, signature, sMailRead->signatureWidth) + 104;
+     box_y = sMailRead->layout->signatureYPos + 88;
+     AddTextPrinterParameterized3(0, FONT_NORMAL, box_x, box_y, sTextColors, 0, signature);
++#endif
+     CopyWindowToVram(0, COPYWIN_FULL);
+     CopyWindowToVram(1, COPYWIN_FULL);
+ }
+diff --git a/src/trade.c b/src/trade.c
+index 1768762..70e7e48 100644
+--- a/src/trade.c
++++ b/src/trade.c
+@@ -1203,7 +1203,24 @@ static bool8 BufferTradeParties(void)
+ 
+ static void PrintIsThisTradeOkay(void)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // The Japanese question names both Pokémon, as that ROM builds it: the
++    // player's, sText_UnusedEmpty (a particle there), the partner's, then
++    // sText_IsThisTradeOkay.
++    u8 nickname[POKEMON_NAME_BUFFER_SIZE];
++    u8 text[POKEMON_NAME_BUFFER_SIZE * 2 + 32];
++    u8 *end;
++
++    GetMonData(&gPlayerParty[sTradeMenu->cursorPosition], MON_DATA_NICKNAME, nickname);
++    end = StringCopy_Nickname(text, nickname);
++    end = StringCopy(end, sText_UnusedEmpty);
++    GetMonData(&gEnemyParty[sTradeMenu->partnerCursorPosition % PARTY_SIZE], MON_DATA_NICKNAME, nickname);
++    end = StringCopy_Nickname(end, nickname);
++    StringCopy(end, sText_IsThisTradeOkay);
++    DrawBottomRowText(text, (void *)(OBJ_VRAM0 + (sTradeMenu->bottomTextTileStart * 32)), 24);
++#else
+     DrawBottomRowText(sText_IsThisTradeOkay, (void *)(OBJ_VRAM0 + (sTradeMenu->bottomTextTileStart * 32)), 24);
++#endif
+ }
+ 
+ static void Leader_ReadLinkBuffer(u8 mpId, u8 status)

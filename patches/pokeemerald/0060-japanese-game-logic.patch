@@ -1,0 +1,59 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese record mixing and Trainer Hill
+Applies after 0059-japanese-name-length.patch; apply with tools/bootstrap.py.
+
+Two differences of the Japanese ROM's own logic: it never refuses to mix records
+(only the international games refuse Japanese ones), and its Trainer Hill has no
+"closed until the game is cleared" state, so the attendant and the two visitors
+skip it (their three texts are not in that ROM).
+
+diff --git a/data/maps/TrainerHill_Entrance/scripts.inc b/data/maps/TrainerHill_Entrance/scripts.inc
+index 48b1680..2ec19b1 100644
+--- a/data/maps/TrainerHill_Entrance/scripts.inc
++++ b/data/maps/TrainerHill_Entrance/scripts.inc
+@@ -120,7 +120,10 @@ TrainerHill_Entrance_EventScript_AttendantEnd::
+ TrainerHill_Entrance_EventScript_EntryTrigger::
+ 	lockall
+ 	applymovement LOCALID_PLAYER, TrainerHill_Entrance_Movement_PlayerFaceAttendant
++@ The Japanese Trainer Hill has no "closed until the game is cleared" state (nor its three texts).
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ 	goto_if_unset FLAG_SYS_GAME_CLEAR, TrainerHill_Entrance_EventScript_Closed
++#endif
+ 	msgbox TrainerHill_Entrance_Text_WelcomeToTrainerHill, MSGBOX_DEFAULT
+ 	trainerhill_getsaved
+ 	call_if_eq VAR_RESULT, FALSE, TrainerHill_Entrance_EventScript_SaveGame
+@@ -219,7 +222,9 @@ TrainerHill_Entrance_EventScript_Records::
+ 	end
+ 
+ TrainerHill_Entrance_EventScript_Man::
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ 	goto_if_unset FLAG_SYS_GAME_CLEAR, TrainerHill_Entrance_EventScript_ManTrainerHillClosed
++#endif
+ 	msgbox TrainerHill_Entrance_Text_WhatSortOfTrainersAreAhead, MSGBOX_NPC
+ 	end
+ 
+@@ -228,7 +233,9 @@ TrainerHill_Entrance_EventScript_ManTrainerHillClosed::
+ 	end
+ 
+ TrainerHill_Entrance_EventScript_Girl::
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ 	goto_if_unset FLAG_SYS_GAME_CLEAR, TrainerHill_Entrance_EventScript_GirlTrainerHillClosed
++#endif
+ 	msgbox TrainerHill_Entrance_Text_FriendsTryingToReachTimeBoardTop, MSGBOX_NPC
+ 	end
+ 
+diff --git a/src/cable_club.c b/src/cable_club.c
+index 571f097..fa4021d 100644
+--- a/src/cable_club.c
++++ b/src/cable_club.c
+@@ -678,6 +678,11 @@ static void Task_ValidateMixingGameLanguage(u8 taskId)
+             {
+                 mixingForeignGames = TRUE;
+             }
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++            // Only the international games refuse to mix records with Japanese ones:
++            // the Japanese ROM has no such check (nor CableClub_Text_CantMixWithJapaneseGame).
++            mixingForeignGames = FALSE;
++#endif
+ 
+             if (mixingForeignGames)
+             {

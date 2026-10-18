@@ -62,9 +62,9 @@ python tools/bootstrap.py
 python tools/localize_japanese.py --tree build/upstream --rom "/path/to/Pocket Monsters - Emerald (Japan).gba"
 ```
 
-This stages text only and leaves `GAME_LANGUAGE` unchanged. Graphics, credits
-and floors stay English, and the engine does not handle a Japanese game yet, so
-the tree is not a playable build. The next `bootstrap.py` run resets it.
+This stages text only and leaves `GAME_LANGUAGE` unchanged, so the engine's
+Japanese behaviour (below) stays off. Graphics, credits and floors stay English,
+so the tree is not a playable build. The next `bootstrap.py` run resets it.
 
 ## Not mapped yet
 
@@ -76,14 +76,22 @@ the tree is not a playable build. The next `bootstrap.py` run resets it.
 
 ## Code changes a Japanese build needs
 
-These are open for discussion; none is implemented.
+Patches 0057-0061 implement, for `GAME_LANGUAGE == LANGUAGE_JAPANESE` only, items
+1, 4 and 5 except the bard, and the name length of item 2 (marked
+*done* below). The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
    nickname in switch-to-Japanese/back-to-Latin codes, `ConvertInternationalString`
    pads Japanese names, and so on (about 70 `LANGUAGE_JAPANESE` and 40
-   `GAME_LANGUAGE` sites).
-2. **Names and keyboards.** Player and Pokémon names of 5 characters; kana pages
+   `GAME_LANGUAGE` sites). *Done* (0057, 0058): printers and `GetStringWidth`
+   start in the Japanese glyphs with the Japanese ROM's font metrics;
+   `IsForeignScriptLanguage` (`string_util.h`) is false, so no name is wrapped or
+   padded, as in that ROM, which shows other games' Latin names in its own
+   full-width Latin glyphs; `IsForeignGameLanguage` keeps the Latin-script games
+   out of the Union Room and the trainer records.
+2. **Names and keyboards.** Player and Pokémon names of 5 characters (*done*,
+   0059; Walda's phrase, 12 characters in that ROM, still takes 15); kana pages
    for the naming screen, the Union Room chat and the Easy Chat keyboard (a
    45-entry index by kana rows instead of A–Z).
 3. **Port UI.** The bottom screen and the HD battle box draw text with the Latin
@@ -94,11 +102,18 @@ These are open for discussion; none is implemented.
    no space; the contest "Appeal no. X" lines have no number; mail puts the
    sender after the name; the diploma prints the player name and Pokédex type
    separately; two Lilycove Lady texts use other placeholders; Battle Pyramid
-   arrows are a control code.
+   arrows are a control code. *Done* (0061): the five built lines follow the
+   Japanese ROM's code, mail with its layout and signature window; the Lilycove
+   Lady texts use the same placeholders, only more or fewer times, and the
+   Pyramid's escape-code arrows draw as they are in Japanese glyphs, so neither
+   needs code. Still open: the Pokédex page's Japanese layout and metric units.
 5. **Content and logic.** Japanese Trainer Hill has no "closed until the game is
    cleared" state; only the international game refuses record mixing with a
    Japanese game; the bard sings each kana through a vowel table instead of
-   per-word phonemes; apprentices have a Japanese name only.
+   per-word phonemes; apprentices have a Japanese name only. *Done* (0060): no
+   closed state and no refusal; the wild/foe prefix stays in front of the name
+   (0058); apprentices need no code (`GetApprenticeNameInLanguage` gives the
+   Japanese name, slot 0). Open: the bard.
 6. **Port additions** that need their own Japanese text: the Exp. Share team
    message and the summary screen's category label.
 7. **Integration.** Builder and web builder acceptance of BPEJ, the ROM guard in
