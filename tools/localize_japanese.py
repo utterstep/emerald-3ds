@@ -14,7 +14,7 @@ move and Pokemon id lists in the ROM's kana order, the reference symbols
 code patch of this repository (the manifest's "graphics_patch_of"); they are
 staged only into a tree that has it. Graphics with another size or layout
 ("graphics_layout_differs") and the Trainer Hill floors (the Japanese ROM has no
-counterpart of the four modes) stay English. Patches 0057-0061 and 0070-0074
+counterpart of the four modes) stay English. Patches 0057-0061, 0070-0074 and 0076
 make a Japanese build behave like the Japanese game; what is still open is listed
 in docs/JAPANESE.md, and console play testing is pending.
 

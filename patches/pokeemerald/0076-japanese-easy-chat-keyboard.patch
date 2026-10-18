@@ -1,0 +1,390 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese Easy Chat keyboard
+Applies after 0005-port-hooks.patch; apply with tools/bootstrap.py.
+
+The Japanese ROM's Easy Chat keyboard: the alphabet mode picks words by kana row
+(あ to わ and そのた, the others) from all 45 gEasyChatWordsByLetterPointers lists,
+which tools/localize_japanese.py stages in the ROM's kana order with the keyboard's
+rows of text (gText_EasyChatKeyboard_*). Group names and words are in three
+columns, at the ROM's positions, and the rectangle cursor is one sprite of the
+Japanese graphics, which staging puts only into a tree with this patch (it looks for
+EASY_CHAT_KANA_KEYBOARD).
+
+diff --git a/include/easy_chat.h b/include/easy_chat.h
+index 0434bb0..97fc9b6 100644
+--- a/include/easy_chat.h
++++ b/include/easy_chat.h
+@@ -103,12 +103,20 @@ struct EasyChatGroup
+     u16 numEnabledWords;
+ };
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese keyboard's word groups: the others and the 44 kana rows あ to わ, all
++// of gEasyChatWordsByLetterPointers
++#define EC_NUM_KEYBOARD_GROUPS (EC_NUM_ALPHABET_GROUPS + 18)
++#else
++#define EC_NUM_KEYBOARD_GROUPS EC_NUM_ALPHABET_GROUPS
++#endif
++
+ struct EasyChatScreenWordData
+ {
+     u16 numUnlockedGroups;
+     u16 unlockedGroupIds[EC_NUM_GROUPS];
+-    u16 numUnlockedAlphabetWords[EC_NUM_ALPHABET_GROUPS];
+-    u16 unlockedAlphabetWords[EC_NUM_ALPHABET_GROUPS][EC_MAX_WORDS_IN_GROUP];
++    u16 numUnlockedAlphabetWords[EC_NUM_KEYBOARD_GROUPS];
++    u16 unlockedAlphabetWords[EC_NUM_KEYBOARD_GROUPS][EC_MAX_WORDS_IN_GROUP];
+     u8 unused[44];
+     u16 selectedGroupWords[EC_MAX_WORDS_IN_GROUP];
+     u16 numSelectedGroupWords;
+diff --git a/src/easy_chat.c b/src/easy_chat.c
+index 5fdf762..97af417 100644
+--- a/src/easy_chat.c
++++ b/src/easy_chat.c
+@@ -337,9 +337,20 @@ enum {
+ #define NUM_WORD_SELECT_ROWS 4
+ #define NUM_BUTTON_ROWS      3
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// EASY_CHAT_KANA_KEYBOARD: the Japanese keyboard picks words by kana row (あいうえお
++// なにぬねの やゆよ わ / かきくけこ はひふへほ そのた / さしすせそ まみむめも /
++// たちつてと らりるれろ: GetSelectedAlphabetGroupId), its rows of text staged as
++// the gText_EasyChatKeyboard_* texts and its word lists as gEasyChatWordsByLetter_*;
++// group names and words are in three columns, and the rectangle cursor is one sprite.
++#define NUM_ALPHABET_COLUMNS    14
++#define NUM_GROUP_NAME_COLUMNS  3
++#define NUM_WORD_SELECT_COLUMNS 3
++#else
+ #define NUM_ALPHABET_COLUMNS    7
+ #define NUM_GROUP_NAME_COLUMNS  2
+ #define NUM_WORD_SELECT_COLUMNS 2
++#endif
+ 
+ enum {
+     FRAMEID_GENERAL_2x2,
+@@ -680,6 +691,7 @@ static const struct EasyChatScreenTemplate sEasyChatScreenTemplates[] = {
+     },
+ };
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ // IDs are used indirectly as indexes into gEasyChatWordsByLetterPointers
+ // 0 is 'Others', 1-26 are the letters A-Z
+ // This array maps the group IDs to the alphabet keyboard
+@@ -689,6 +701,7 @@ static const u8 sAlphabetGroupIdMap[NUM_ALPHABET_ROWS][NUM_ALPHABET_COLUMNS] = {
+     {13, 14, 15, 16, 17, 18, 19},
+     {20, 21, 22, 23, 24, 25, 26},
+ };
++#endif
+ 
+ static const u16 sMysteryGiftPhrase[NUM_QUESTIONNAIRE_WORDS] = {
+     EC_WORD_LINK,
+@@ -938,7 +951,9 @@ static const struct CompressedSpriteSheet sCompressedSpriteSheets[] = {
+     },
+ };
+ 
++#if GAME_LANGUAGE != LANGUAGE_JAPANESE
+ static const u8 sAlphabetKeyboardColumnOffsets[NUM_ALPHABET_COLUMNS] = {0, 12, 24, 56, 68, 80, 92};
++#endif
+ 
+ static const struct OamData sOamData_TriangleCursor = {
+     .y = 0,
+@@ -1684,7 +1699,7 @@ static bool8 InitEasyChatScreenStruct(u8 type, u16 *words, u8 displayedPersonTyp
+         sEasyChatScreen->savedPhrase = sEasyChatScreen->currentPhrase;
+     }
+ 
+-    sEasyChatScreen->keyboardLastRow = (GetNumUnlockedEasyChatGroups() - 1) / 2 + 1;
++    sEasyChatScreen->keyboardLastRow = (GetNumUnlockedEasyChatGroups() - 1) / NUM_GROUP_NAME_COLUMNS + 1;
+     return TRUE;
+ }
+ 
+@@ -2222,7 +2237,7 @@ static int SelectKeyboardGroup(void)
+     if (numWords == 0)
+         return ECFUNC_NONE;
+ 
+-    sEasyChatScreen->wordSelectLastRow = (numWords - 1) / 2;
++    sEasyChatScreen->wordSelectLastRow = (numWords - 1) / NUM_WORD_SELECT_COLUMNS;
+     sEasyChatScreen->wordSelectScrollOffset = 0;
+     sEasyChatScreen->wordSelectColumn = 0;
+     sEasyChatScreen->wordSelectRow = 0;
+@@ -2409,7 +2424,7 @@ static int MoveKeyboardCursor_GroupNames(u32 input)
+ 
+         return ECFUNC_UPDATE_KEYBOARD_CURSOR;
+     case INPUT_RIGHT:
+-        if (sEasyChatScreen->keyboardColumn < 1)
++        if (sEasyChatScreen->keyboardColumn < NUM_GROUP_NAME_COLUMNS - 1)
+         {
+             sEasyChatScreen->keyboardColumn++;
+             if (IsSelectedKeyboardIndexInvalid())
+@@ -2504,7 +2519,7 @@ static void SetKeyboardCursorToLastColumn(void)
+ {
+     if (!sEasyChatScreen->inAlphabetMode)
+     {
+-        sEasyChatScreen->keyboardColumn = 1;
++        sEasyChatScreen->keyboardColumn = NUM_GROUP_NAME_COLUMNS - 1;
+         ReduceToValidKeyboardColumn();
+     }
+     else
+@@ -2558,12 +2573,12 @@ static u16 MoveWordSelectCursor(u32 input)
+         if (sEasyChatScreen->wordSelectColumn > 0)
+             sEasyChatScreen->wordSelectColumn--;
+         else
+-            sEasyChatScreen->wordSelectColumn = 1;
++            sEasyChatScreen->wordSelectColumn = NUM_WORD_SELECT_COLUMNS - 1;
+ 
+         ReduceToValidWordSelectColumn();
+         return ECFUNC_UPDATE_WORD_SELECT_CURSOR;
+     case INPUT_RIGHT:
+-        if (sEasyChatScreen->wordSelectColumn < 1)
++        if (sEasyChatScreen->wordSelectColumn < NUM_WORD_SELECT_COLUMNS - 1)
+         {
+             sEasyChatScreen->wordSelectColumn++;
+             if (IsSelectedWordIndexInvalid())
+@@ -2613,12 +2628,37 @@ static u16 GetSelectedGroupIndex(void)
+     return NUM_GROUP_NAME_COLUMNS * (sEasyChatScreen->keyboardRow + sEasyChatScreen->keyboardScrollOffset) + sEasyChatScreen->keyboardColumn;
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// gEasyChatWordsByLetterPointers: 0 is the others (そのた), 1-44 the kana rows あ to わ
++static int GetSelectedAlphabetGroupId(void)
++{
++    int column = sEasyChatScreen->keyboardColumn;
++    int row = sEasyChatScreen->keyboardRow;
++
++    if (column < 5)
++        return row * 5 + column + 1;   // あ-と
++    if (column < 10)
++    {
++        if (row < 3)
++            return row * 5 + column + 16;  // な-も
++        return column + 34;             // ら-ろ
++    }
++    if (column < 13)
++    {
++        if (row == 0)
++            return column + 26;         // や-よ
++        return 0;                       // そのた
++    }
++    return 44;                          // わ
++}
++#else
+ static int GetSelectedAlphabetGroupId(void)
+ {
+     int column = (u8)sEasyChatScreen->keyboardColumn < NUM_ALPHABET_COLUMNS ? sEasyChatScreen->keyboardColumn : 0;
+     int row = (u8)sEasyChatScreen->keyboardRow < NUM_ALPHABET_ROWS ? sEasyChatScreen->keyboardRow : 0;
+     return sAlphabetGroupIdMap[row][column];
+ }
++#endif
+ 
+ static u16 GetSelectedWordIndex(void)
+ {
+@@ -2628,6 +2668,18 @@ static u16 GetSelectedWordIndex(void)
+ // Get the index of the last column in the alphabet keyboard, depending on current row
+ static u8 GetLastAlphabetColumn(u8 row)
+ {
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    // わ, そのた (one key) and the five-kana groups ending the other rows
++    switch (row)
++    {
++    case 0:
++        return NUM_ALPHABET_COLUMNS - 1;
++    case 1:
++        return 10;
++    default:
++        return 9;
++    }
++#else
+     switch (row)
+     {
+     case 0:
+@@ -2637,6 +2689,7 @@ static u8 GetLastAlphabetColumn(u8 row)
+         return NUM_ALPHABET_COLUMNS - 2; // At 6 letters, only the 2nd row (index 1) has less than the max columns
+                                          // The 3rd and 4th row have 7 letters, the 1st row has 6 letters and 'Others'
+     }
++#endif
+ }
+ 
+ static void ReduceToValidKeyboardColumn(void)
+@@ -4252,10 +4305,14 @@ static void PrintKeyboardGroupNames(void)
+     int x, y;
+ 
+     i = 0;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    y = 98;
++#else
+     y = 97;
++#endif
+     while (1)
+     {
+-        for (x = 0; x < 2; x++)
++        for (x = 0; x < NUM_GROUP_NAME_COLUMNS; x++)
+         {
+             u8 groupId = GetUnlockedEasyChatGroupId(i++);
+             if (groupId == EC_NUM_GROUPS)
+@@ -4264,7 +4321,11 @@ static void PrintKeyboardGroupNames(void)
+                 return;
+             }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++            PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, GetEasyChatWordGroupName(groupId), x * 56 + 8, y, TEXT_SKIP_DRAW, NULL);
++#else
+             PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, GetEasyChatWordGroupName(groupId), x * 84 + 10, y, TEXT_SKIP_DRAW, NULL);
++#endif
+         }
+ 
+         y += 16;
+@@ -4276,7 +4337,11 @@ static void PrintKeyboardAlphabet(void)
+     u32 i;
+ 
+     for (i = 0; i < ARRAY_COUNT(sEasyChatKeyboardAlphabet); i++)
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++        PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sEasyChatKeyboardAlphabet[i], 8, 98 + i * 16, TEXT_SKIP_DRAW, NULL);
++#else
+         PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sEasyChatKeyboardAlphabet[i], 10, 97 + i * 16, TEXT_SKIP_DRAW, NULL);
++#endif
+ }
+ 
+ static void PrintInitialWordSelectText(void)
+@@ -4337,17 +4402,26 @@ static void PrintWordSelectText(u8 scrollOffset, u8 numRows)
+ 
+     wordIndex = scrollOffset * NUM_WORD_SELECT_COLUMNS;
+     y = (scrollOffset * 16 + 96) & 0xFF;
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    y += 2;
++#else
+     y++;
++#endif
+     for (i = 0; i < numRows; i++)
+     {
+-        for (j = 0; j < 2; j++)
++        for (j = 0; j < NUM_WORD_SELECT_COLUMNS; j++)
+         {
+             easyChatWord = GetWordFromSelectedGroup(wordIndex++);
+             if (easyChatWord != EC_EMPTY_WORD)
+             {
+                 CopyEasyChatWordPadded(sScreenControl->wordSelectPrintBuffer, easyChatWord, 0);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++                if (!DummyWordCheck(easyChatWord))
++                    PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sScreenControl->wordSelectPrintBuffer, j * 72 + 16, y, TEXT_SKIP_DRAW, NULL);
++#else
+                 if (!DummyWordCheck(easyChatWord))
+                     PrintEasyChatText(WIN_INPUT_SELECT, FONT_NORMAL, sScreenControl->wordSelectPrintBuffer, (j * 13 + 3) * 8, y, TEXT_SKIP_DRAW, NULL);
++#endif
+                 else // Never reached
+                     PrintEasyChatTextWithColors(WIN_INPUT_SELECT, FONT_NORMAL, sScreenControl->wordSelectPrintBuffer, (j * 13 + 3) * 8, y, TEXT_SKIP_DRAW, TEXT_COLOR_WHITE, TEXT_COLOR_LIGHT_RED, TEXT_COLOR_LIGHT_GRAY);
+             }
+@@ -4680,6 +4754,86 @@ static void StartMainCursorAnim(void)
+     sScreenControl->mainCursorSprite->sAnimateCursor = TRUE;
+ }
+ 
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++// One sprite: the Japanese cursor graphics hold whole rectangles, not mirrored halves
++static void CreateRectangleCursorSprites(void)
++{
++    u8 spriteId = CreateSprite(&sSpriteTemplate_RectangleCursor, 0, 0, 3);
++    sScreenControl->rectangleCursorSpriteRight = &gSprites[spriteId];
++    UpdateRectangleCursorPos();
++}
++
++static void DestroyRectangleCursorSprites(void)
++{
++    DestroySprite(sScreenControl->rectangleCursorSpriteRight);
++    sScreenControl->rectangleCursorSpriteRight = NULL;
++}
++
++static void UpdateRectangleCursorPos(void)
++{
++    s8 column;
++    s8 row;
++
++    if (sScreenControl->rectangleCursorSpriteRight)
++    {
++        GetKeyboardCursorColAndRow(&column, &row);
++        if (!GetInAlphabetMode())
++            SetRectangleCursorPos_GroupMode(column, row);
++        else
++            SetRectangleCursorPos_AlphabetMode(column, row);
++    }
++}
++
++static void SetRectangleCursorPos_GroupMode(s8 column, s8 row)
++{
++    struct Sprite *cursor = sScreenControl->rectangleCursorSpriteRight;
++
++    if (column != -1)
++    {
++        // In group name window
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_GROUP);
++        cursor->x = column * 56 + 40;
++        cursor->y = row * 16 + 96;
++    }
++    else
++    {
++        // In button window
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_BUTTON);
++        cursor->x = 216;
++        cursor->y = row * 16 + 112;
++    }
++}
++
++// The keys are the kana of the keyboard's rows of text, 8 pixels apart, a blank
++// between groups of five: column c is character c + c / 5 of its row
++static void SetRectangleCursorPos_AlphabetMode(s8 column, s8 row)
++{
++    struct Sprite *cursor = sScreenControl->rectangleCursorSpriteRight;
++
++    if (column == -1)
++    {
++        // In button window
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_BUTTON);
++        cursor->x = 216;
++        cursor->y = row * 16 + 112;
++    }
++    else if (column == 10 && row == 1)
++    {
++        // Cursor is on そのた (others)
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_OTHERS);
++        cursor->x = 124;
++        cursor->y = 112;
++    }
++    else
++    {
++        StartSpriteAnim(cursor, RECTCURSOR_ANIM_ON_LETTER);
++        cursor->x = (column + column / 5) * 8 + 20;
++        cursor->y = row * 16 + 96;
++        if (column > 12)
++            cursor->x += 8; // わ, after a blank
++    }
++}
++#else
+ static void CreateRectangleCursorSprites(void)
+ {
+     u8 spriteId = CreateSprite(&sSpriteTemplate_RectangleCursor, 0, 0, 3);
+@@ -4786,6 +4940,7 @@ static void SetRectangleCursorPos_AlphabetMode(s8 column, s8 row)
+         sScreenControl->rectangleCursorSpriteLeft->y = row * 16 + 112;
+     }
+ }
++#endif
+ 
+ // Cursor for selecting a new word
+ // Identical in appearance to the 'main' cursor
+@@ -4813,8 +4968,12 @@ static void UpdateWordSelectCursorPos(void)
+     s8 column, row, x, y;
+ 
+     GetWordSelectColAndRow(&column, &row);
++#if GAME_LANGUAGE == LANGUAGE_JAPANESE
++    x = column * 72 + 20;
++#else
+     x = column * 13;
+     x = x * 8 + 28;
++#endif
+     y = row * 16 + 96;
+     SetWordSelectCursorPos(x, y);
+ }
+@@ -5694,7 +5853,7 @@ static void SetUnlockedWordsByAlphabet(void)
+     u16 numToProcess;
+     int index;
+ 
+-    for (i = 0; i < EC_NUM_ALPHABET_GROUPS; i++)
++    for (i = 0; i < EC_NUM_KEYBOARD_GROUPS; i++)
+     {
+         numWords = gEasyChatWordsByLetterPointers[i].numWords;
+         words = gEasyChatWordsByLetterPointers[i].words;
