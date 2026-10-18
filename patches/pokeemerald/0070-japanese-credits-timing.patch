@@ -1,0 +1,34 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese credits timing
+Applies after 0050-italian-ending-tilemap.patch; apply with tools/bootstrap.py.
+
+The Japanese credits have 45 pages of 5 entries (tools/localize_japanese.py
+rebuilds src/data/credits.h from the ROM) instead of 55. The Japanese ROM
+shows each page for 156 frames instead of 115, so that the credits end with
+their music; the scene changes keep the decomp's PAGE_COUNT / 9 spacing.
+
+--- a/src/credits.c
++++ b/src/credits.c
+@@ -730,6 +730,14 @@
+ #define tCurrentPage data[2]
+ #define tDelay       data[3]
+ 
++#if defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese credits have 45 pages instead of 55, and the Japanese ROM shows
++// each page longer, so that the credits still last as long as their music.
++#define CREDITS_PAGE_DELAY 156
++#else
++#define CREDITS_PAGE_DELAY 115
++#endif
++
+ static void Task_UpdatePage(u8 taskId)
+ {
+     int i;
+@@ -792,7 +800,7 @@
+     case 3:
+         if (!gPaletteFade.active)
+         {
+-            gTasks[taskId].tDelay = 115;
++            gTasks[taskId].tDelay = CREDITS_PAGE_DELAY;
+             gTasks[taskId].tState++;
+         }
+         return;

@@ -1,0 +1,26 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese title screen version logo palettes
+Applies after 0005-port-hooks.patch; apply with tools/bootstrap.py.
+
+The Japanese "Emerald" version logo uses colours from the nine title
+palettes, which the Japanese ROM loads into the nine reserved OBJ palettes
+(there is no separate version palette). tools/localize_japanese.py stages
+those 288 bytes as emerald_version.gbapal, with the Japanese logo, only into
+a tree with this patch (it looks for TITLE_VERSION_PAL_JAPANESE).
+
+--- a/src/title_screen.c
++++ b/src/title_screen.c
+@@ -667,7 +667,14 @@
+         LoadCompressedSpriteSheet(&sSpriteSheet_EmeraldVersion[0]);
+         LoadCompressedSpriteSheet(&sSpriteSheet_PressStart[0]);
+         LoadCompressedSpriteSheet(&sPokemonLogoShineSpriteSheet[0]);
++#if defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++        // TITLE_VERSION_PAL_JAPANESE: the Japanese version logo uses colours of the
++        // nine title palettes, which the Japanese ROM loads into the nine reserved
++        // OBJ palettes; emerald_version.gbapal holds those nine.
++        LoadPalette(gTitleScreenEmeraldVersionPal, OBJ_PLTT_ID(0), 9 * PLTT_SIZE_4BPP);
++#else
+         LoadPalette(gTitleScreenEmeraldVersionPal, OBJ_PLTT_ID(0), PLTT_SIZE_4BPP);
++#endif
+         LoadSpritePalette(&sSpritePalette_PressStart[0]);
+         gMain.state = 2;
+         break;

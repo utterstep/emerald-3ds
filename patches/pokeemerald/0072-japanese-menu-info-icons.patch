@@ -1,0 +1,60 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese menu info icons
+Applies after 0005-port-hooks.patch; apply with tools/bootstrap.py.
+
+The Japanese graphics/interface/menu_info.png has 30-pixel type icons and
+puts the TYPE/POWER/ACCURACY/PP/EFFECT labels and the decoration balls at
+other tiles; this is the Japanese ROM's sMenuInfoIcons table.
+tools/localize_japanese.py stages the Japanese bitmap only into a tree with
+this patch (it looks for MENU_INFO_ICONS_JAPANESE).
+
+--- a/src/menu.c
++++ b/src/menu.c
+@@ -134,6 +134,40 @@
+ static const u16 sHofPC_TopBar_Pal[] = INCBIN_U16("graphics/interface/hof_pc_topbar.gbapal");
+ static const u8 sTextColors[] = { TEXT_DYNAMIC_COLOR_6, TEXT_COLOR_WHITE, TEXT_COLOR_DARK_GRAY };
+ 
++#if defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++// The Japanese menu_info.png: type icons 30 pixels wide, and the TYPE, POWER,
++// ACCURACY, PP and EFFECT labels (also 30 pixels) and the two balls at other tiles.
++#define MENU_INFO_ICONS_JAPANESE
++static const struct MenuInfoIcon sMenuInfoIcons[] =
++{   // { width, height, offset }
++    { 12, 12, 0x00 },  // Unused
++    [TYPE_NORMAL + 1]   = { 30, 12, 0x20 },
++    [TYPE_FIGHTING + 1] = { 30, 12, 0x64 },
++    [TYPE_FLYING + 1]   = { 30, 12, 0x60 },
++    [TYPE_POISON + 1]   = { 30, 12, 0x80 },
++    [TYPE_GROUND + 1]   = { 30, 12, 0x48 },
++    [TYPE_ROCK + 1]     = { 30, 12, 0x44 },
++    [TYPE_BUG + 1]      = { 30, 12, 0x6C },
++    [TYPE_GHOST + 1]    = { 30, 12, 0x68 },
++    [TYPE_STEEL + 1]    = { 30, 12, 0x88 },
++    [TYPE_MYSTERY + 1]  = { 30, 12, 0xA4 },
++    [TYPE_FIRE + 1]     = { 30, 12, 0x24 },
++    [TYPE_WATER + 1]    = { 30, 12, 0x28 },
++    [TYPE_GRASS + 1]    = { 30, 12, 0x2C },
++    [TYPE_ELECTRIC + 1] = { 30, 12, 0x40 },
++    [TYPE_PSYCHIC + 1]  = { 30, 12, 0x84 },
++    [TYPE_ICE + 1]      = { 30, 12, 0x4C },
++    [TYPE_DRAGON + 1]   = { 30, 12, 0xA0 },
++    [TYPE_DARK + 1]     = { 30, 12, 0x8C },
++    [MENU_INFO_ICON_TYPE]      = { 30, 12, 0xA8 },
++    [MENU_INFO_ICON_POWER]     = { 30, 12, 0xAC },
++    [MENU_INFO_ICON_ACCURACY]  = { 30, 12, 0xC0 },
++    [MENU_INFO_ICON_PP]        = { 30, 12, 0xC4 },
++    [MENU_INFO_ICON_EFFECT]    = { 30, 12, 0xC8 }, // Unused
++    [MENU_INFO_ICON_BALL_RED]  = {  8,  8, 0xCC }, // For placed decorations in Secret Base
++    [MENU_INFO_ICON_BALL_BLUE] = {  8,  8, 0xCD }, // For placed decorations in player's room
++};
++#else
+ // Table of move info icon offsets in graphics/interface/menu_info.png
+ static const struct MenuInfoIcon sMenuInfoIcons[] =
+ {   // { width, height, offset }
+@@ -164,6 +198,7 @@
+     [MENU_INFO_ICON_BALL_RED]  = {  8,  8, 0xAE }, // For placed decorations in Secret Base
+     [MENU_INFO_ICON_BALL_BLUE] = {  8,  8, 0xAF }, // For placed decorations in player's room
+ };
++#endif
+ 
+ void InitStandardTextBoxWindows(void)
+ {

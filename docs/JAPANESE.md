@@ -1,19 +1,25 @@
-# Japanese (BPEJ): draft text mapping
+# Japanese (BPEJ)
 
-**Status: draft.** `tools/bootstrap.py`, the builders, the web builder and the
-release scripts accept the Japanese ROM ([Building the Japanese
-game](#building-the-japanese-game)); the game itself still needs the code
-changes listed at the end. This page describes what the draft manifest covers,
-how it was made and checked, how to build the game and what it still needs.
+**Status: experimental, not yet playable.** `tools/localize_japanese.py` stages
+the Japanese game data from the player's ROM: texts, graphics, credits, the
+Easy Chat id lists and `GAME_LANGUAGE`. `tools/bootstrap.py`, the builders, the
+web builder and the release scripts accept that ROM ([Building the Japanese
+game](#building-the-japanese-game)). The engine does not handle a Japanese
+game yet (see [Code changes a Japanese build needs](#code-changes-a-japanese-build-needs)),
+and nothing has been tested on a console. This page describes what the manifest
+covers, how it was made and checked, how to build the game and what is left.
 
-The supported cartridge would be **Pocket Monsters Emerald (Japan, BPEJ)**,
+The supported cartridge is **Pocket Monsters Emerald (Japan, BPEJ)**,
 SHA-1 `d7cf8f156ba9c455d164e1ea780a6bf1945465c2` (No-Intro).
 
-## The draft manifest
+## The manifest
 
 `tools/locales/japanese.json.gz` has the Italian manifest's schema: positions in
 the patched tree, offsets and sizes in the Japanese ROM, and no game text or
-graphics.
+graphics. `tools/locales/japanese-symbols.s.gz` holds the addresses and sizes of
+the four Easy Chat id lists and of the staged graphics, nothing else.
+
+### Texts
 
 | Source texts | Count |
 |---|---|
@@ -34,6 +40,65 @@ Conventions that differ from the Italian manifest:
 - kind `c_eos` is a Japanese string stored without its terminator (the Pokédex
   categories, a fixed 6-byte field padded with 0x00); staging appends the 0xFF.
 
+### Graphics
+
+The Italian manifest stages 104 graphics. Their Japanese counterparts:
+
+| Italian graphics | Count |
+|---|---|
+| Japanese asset identical to the English one (staged anyway) | 19 |
+| Same size and layout, staged | 45 |
+| Staged with a code patch of this repository (0071–0073) | 15 |
+| Another size or layout: need code, stay English (`graphics_layout_differs`) | 19 |
+| No Japanese counterpart (`graphics_skipped`) | 6 |
+
+Staged in addition, as the Japanese game has them: `fonts/normal.hwjpnfont` (every
+glyph one pixel row higher than the decomp's copy) and `fonts/short.fwjpnfont`
+(one glyph differs), and the tilemaps `pokeblock/menu.bin.lz` and
+`trade/menu.bin`, which go with the staged Japanese tiles. 83 graphics are staged
+in all, 56 of them LZ77 streams that staging also decompresses.
+
+Skipped: the five Latin fonts (the Japanese ROM has none; it prints with the
+Japanese fonts) and the port's `italian_the_end.bin.lz` (the Japanese credits
+draw "THE END" from the same letter maps and tiles as the English game, so no
+ending tilemap is needed).
+
+Graphics that need code, with what differs:
+
+- `battle_frontier/tourney_buttons`: the sprite sheet is 0x400 bytes, not 0x600;
+- `contest/nextturn`: the four sprite sheets are 0xA0 bytes, not 0x100;
+- `summary_screen/tiles` and the page tilemaps: 217 tiles instead of 240, laid out
+  differently from tile 96 on (where the code takes its EXP and HP bar tiles);
+- `pokedex/menu`: another tile layout, every Pokédex screen tilemap differs, and
+  the window positions are in code;
+- `pokenav/condition/graph` and `pokeblock/use_screen/graph`: 3872 and 4000 bytes
+  instead of 6656, with other tilemaps;
+- `naming_screen/page_swap_*` and `union_room_chat/*`: they belong to the kana
+  keyboards; two page labels are 0x40 bytes instead of 0x60, the chat background
+  has 38 tiles instead of 39;
+- `bag/check_berry` and `bag/berry_tag.bin`: the berry tag is laid out
+  differently (158 tilemap cells), so the window templates need checking;
+- `slot_machine/menu` and `info_box.bin`: the Japanese code loads 0x1D20 bytes
+  of tiles, the decomp 0x2200.
+
+### Credits, Trainer Hill, Easy Chat, language
+
+- **Credits.** 45 pages of 5 entries (55 in the other languages); staging
+  rebuilds `src/data/credits.h` from the ROM's credits table, as the Italian
+  script does. Patch 0070 shows each page for 156 frames, as the Japanese ROM
+  does, instead of 115, so that the credits still end with their music.
+- **Trainer Hill.** The Japanese ROM has no counterpart of the four built-in
+  modes (Normal, Variety, Unique, Expert): it has one challenge of two floors,
+  the decomp's unused `sChallenge_JPDefault`/`sFloors_JPDefault`, whose data
+  equals the decomp's but with another trainer record layout (944-byte floors).
+  The four tables stay English (`floors_skipped`).
+- **Easy Chat id lists.** The four move and Pokémon lists that
+  `tools/locale_lists.py` reorders are at ROM offsets 0x574584, 0x57861c,
+  0x578750 and 0x578b1c (the groups table's slots 0, 18, 19 and 21), with the
+  decomp's ids in kana order; `japanese-symbols.s.gz` names them.
+- **Language.** Staging sets `GAME_LANGUAGE` to `LANGUAGE_JAPANESE` in
+  `include/constants/global.h`, like the other locales.
+
 ## How it was made and checked
 
 - **Event scripts.** The Japanese ROM keeps the decomp's map table (34 groups,
@@ -47,12 +112,23 @@ Conventions that differ from the Italian manifest:
   other fields (IDs, prices, heights, team lists).
 - **Strings in C code** follow each C file's data order and are tied to pointer
   tables and code references.
+- **Graphics.** Every LZ77 stream the ROM points to was decompressed; 4,129 of
+  the decomp's 4,324 compressed assets match one byte for byte and anchor the
+  rest. Each Italian graphic's counterpart is tied to the code or table that
+  loads it: sprite sheets with the decomp's size and tag, literal pools that also
+  hold the anchored tilemaps and palettes the decomp loads with it, and tables
+  with the same slots. Every staged asset has the English size (or the size its
+  patch expects) and, where it goes with tilemaps, those are identical or staged
+  too. Differences were checked tile by tile and by rendering the tiles.
+- **Credits, floors, lists** were read from the code that uses them (page count,
+  page delay, the Trainer Hill load, the Easy Chat groups table).
 - Every pair was read in both languages. A held-out check (trainer-ID links
   hidden from the mapping) placed 678 trainer texts, all correctly.
 - The manifest was checked for source hashes, ROM ranges, terminators (`_()`
-  appends one, `__()` none), braille headers against the decomp's
-  `brailleformat` values and a staging dry run. The staged C files compile with a
-  host compiler with no new errors.
+  appends one, `__()` none), braille headers, graphics streams and sizes, and a
+  staging dry run of `tools/localize_japanese.py`. All 320 C units of the staged
+  tree, compiled with a host compiler as Japanese, show no new errors against the
+  English tree.
 
 The working evidence quotes ROM text, so it stays out of the repository.
 
@@ -101,33 +177,29 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
   web builder recognise the dump and build from it when the release has a
   Japanese variant, `payload/ja/` (`Emerald3DS-ja.3dsx` among the release
   assets): `tools/build_release.py --japanese-rom ROM`
-  ([RELEASING.md](RELEASING.md)). That variant's recipe needs the Japanese
-  ROM's symbol addresses, `build/japanese-reference.s` staged from
-  `tools/locales/japanese-symbols.s.gz`; until the localization stages it,
-  `build_release.py` stops before the variant's recipe and says so.
-
-## Not mapped yet
-
-- the 104 graphics with text, the credits and the Trainer Hill floors;
-- the Easy Chat ID lists that `tools/locale_lists.py` reorders, which need a
-  reference symbol file (`japanese-symbols.s.gz`). The four Japanese lists are
-  at ROM offsets 0x574584, 0x57861c, 0x578750 and 0x578b1c, with the same IDs in
-  kana order.
+  ([RELEASING.md](RELEASING.md)). That variant's recipe takes its symbol hints
+  from `build/japanese-reference.s`, which staging writes from
+  `tools/locales/japanese-symbols.s.gz`; that file names only the staged
+  graphics and the four Easy Chat lists, so the Japanese recipe has far fewer
+  hints than the other languages'.
 
 ## Code changes a Japanese build needs
 
-These are open for discussion; only the integration (7) is implemented.
+Done in this repository: the port UI (3) and the integration (8), and patches
+0070 (credits page delay), 0071 (contest results title bar), 0072 (menu info
+icons) and 0073 (title screen version logo palettes), each behind
+`GAME_LANGUAGE == LANGUAGE_JAPANESE`. The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
    nickname in switch-to-Japanese/back-to-Latin codes, `ConvertInternationalString`
    pads Japanese names, and so on (about 70 `LANGUAGE_JAPANESE` and 40
-   `GAME_LANGUAGE` sites).
+   `GAME_LANGUAGE` sites). The Latin fonts have no Japanese counterpart.
 2. **Names and keyboards.** Player and Pokémon names of 5 characters; kana pages
    for the naming screen, the Union Room chat and the Easy Chat keyboard (a
-   45-entry index by kana rows instead of A–Z).
-3. **Port UI.** The bottom screen and the HD battle box draw both glyph sets
-   (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and every
+   45-entry index by kana rows instead of A–Z), with their graphics above.
+3. **Port UI** (done). The bottom screen and the HD battle box draw both glyph
+   sets (`CtrLocale_Glyph`, `3ds_bottom_ui.c`, `3ds_battle_hud.c`), and every
    `CTR_TEXT` has its Japanese label: kana only, in the game's own words where
    it has them (`せってい`, `とじる`, the bag pockets, `いりょく`/`めいちゅう`),
    each checked against its space at 8 pixels a glyph. Console texts stay ASCII.
@@ -138,20 +210,23 @@ These are open for discussion; only the integration (7) is implemented.
    separately; two Lilycove Lady texts use other placeholders; Battle Pyramid
    arrows are a control code.
 5. **Content and logic.** Japanese Trainer Hill has no "closed until the game is
-   cleared" state; only the international game refuses record mixing with a
-   Japanese game; the bard sings each kana through a vowel table instead of
-   per-word phonemes; apprentices have a Japanese name only.
-6. **Port additions** that need their own Japanese text: the Exp. Share team
+   cleared" state and only its two-floor challenge; only the international game
+   refuses record mixing with a Japanese game; the bard sings each kana through a
+   vowel table instead of per-word phonemes; apprentices have a Japanese name
+   only. The Japanese credits change scenes at their own pages (5, 9, 14, 20, 25,
+   30, 37, 42) where the decomp spaces them by `PAGE_COUNT / 9`.
+6. **Screens with another layout:** the graphics listed above.
+7. **Port additions** that need their own Japanese text: the Exp. Share team
    message and the summary screen's category label.
-7. **Integration** (done): builder and web builder acceptance of BPEJ, the ROM
+8. **Integration** (done): builder and web builder acceptance of BPEJ, the ROM
    guard in `3ds_data.c`, `bootstrap.py --japanese-rom`, the release's
-   `payload/ja/` (which still needs the reference symbols) and Japanese
-   follower texts.
+   `payload/ja/` and Japanese follower texts. Open: a fuller reference symbol
+   file for the release recipe.
 
 ## Findings about the existing locale manifests
 
 - French and Italian braille texts lost their 6-byte header, so the game read
-  each braille message 6 bytes in (fixed in the commit before this page).
+  each braille message 6 bytes in (fixed in an earlier commit).
 - 55 vanilla English texts are in no locale manifest: the Sealed Chamber
   braille alphabet panels, 7 Union Room prompts, about 20 Mystery Gift texts,
   8 `strings.c` and 5 `battle_message.c` strings, and a few single texts such as
@@ -160,4 +235,10 @@ These are open for discussion; only the integration (7) is implemented.
 - 12 texts are mapped in some locale manifests only (for example 7 Berry Blender
   strings in the Italian and Spanish manifests but not the French one).
 - The Italian manifest maps 13 texts that appear in several maps (door signs,
-  harbors, cable car) to a single copy.
+  harbors, cable car) to a single copy, and two graphics to another graphic's
+  copy (`pokeblock/use_screen/condition`, `pokenav/ribbons/list_bg`), which is
+  harmless where the two are identical.
+- About 170 other decomp graphics have no identical copy in the Japanese ROM
+  (for example the Pokémon title logo, the Pokédex screen tilemaps and the
+  international-only Trainer Hill maps). They are outside the Italian list and
+  not mapped.
