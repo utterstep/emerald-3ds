@@ -189,12 +189,12 @@ builds the development `emerald3ds.3dsx` with the data embedded.)
 
 ## Code changes a Japanese build needs
 
-Done in this repository, marked *done* below: patches 0057–0061, 0063 and 0064
-(item 1, the name lengths of item 2, item 4 but the Pokédex page, item 5 but the
-bard and the credits' scene pages), patches 0070–0073 (credits page delay,
-contest results title bar, menu info icons, title screen version logo
-palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI (3) and
-the integration (8). The other items are open.
+Done in this repository, marked *done* below: patches 0057–0061, 0063, 0064 and
+0066 (item 1, the name lengths of item 2, item 4 but the Pokédex page, item 5
+but the bard and the credits' scene pages, item 7), patches 0070–0073 (credits
+page delay, contest results title bar, menu info icons, title screen version
+logo palettes), all behind `GAME_LANGUAGE == LANGUAGE_JAPANESE`, the port UI
+(3) and the integration (8). The other items are open.
 
 1. **Engine text.** Text printers start in Latin glyphs, and the international
    code treats Japanese as the foreign language: `GetBoxMonData` wraps a Japanese
@@ -247,8 +247,12 @@ the integration (8). The other items are open.
    (26 tiles; the Japanese one is 27, its text fits in both). Open: the bard and
    the credits' scene pages.
 6. **Screens with another layout:** the graphics listed above.
-7. **Port additions** that need their own Japanese text: the Exp. Share team
-   message and the summary screen's category label.
+7. **Port additions** that need their own Japanese text (*done*, 0066): the
+   Exp. Share team message, てもちの　ほかの　ポケモンも／けいけんちを　もらった！
+   (the ROM's てもちの ポケモン and its own line for one Pokémon's EXP; 14 and 12
+   glyphs in the 26-tile battle message box), and the summary screen's category
+   label, しゅるい (the word the Battle Palace sorts moves by; 32 pixels left of the
+   icon, like いりょく and めいちゅう below it).
 8. **Integration** (done): builder and web builder acceptance of BPEJ, the ROM
    guard in `3ds_data.c`, `bootstrap.py --japanese-rom`, the release's
    `payload/ja/` and Japanese follower texts. Open: a fuller reference symbol
