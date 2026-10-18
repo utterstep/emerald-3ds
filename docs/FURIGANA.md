@@ -1,7 +1,8 @@
 # Idea: a kanji and furigana reading pane on the bottom screen
 
-**Status: idea, for after the Japanese build works** (docs/JAPANESE.md). No code yet; a content
-pilot is done (see *Pilot* below).
+**Status: the content is done; no code yet.** The Japanese build runs on a console
+(feature/japanese-build). All 11,286 messages that need it are converted (see *Full run*
+below); the reading pane itself is the next step.
 
 ## Why
 
@@ -76,6 +77,31 @@ because both quote the game's text.
 - **For the full run:** the converter gets the style sheet and a glossary of the game's terms, and
   every output goes through the check; failures are almost always a dropped full-width space or a
   reading that does not match the kana.
+
+## Full run
+
+Done in the cloud session by parallel agents with a shared style sheet and decision log,
+then a consistency pass (318 messages aligned to one rule per word). Every message passes
+the kana check. 5.4 kanji per message, 18.5% of printed characters, 1,357 distinct jōyō
+kanji; 5,642 texts are kept as the game writes them (names, short labels) and 2,240 are
+not text. The result (annotations, `furigana.json` keyed by ROM offset, review pages,
+style sheet, decision log and the tools, which run with plain Python) is kept outside the
+repository on the player's computer, because it is derived from the game's text.
+
+Open style questions: place names in kana or kanji; stat names and map-name popups stay
+kana for now.
+
+## Next steps (code, in this repository)
+
+1. A pack tool: the player's `furigana.json` becomes a binary table in their own data
+   pack, keyed by a hash of each message's kana bytes (the game prints from the same
+   bytes, so no address map is needed). Nothing of the table goes into git.
+2. A hook where a message starts (field message box, battle text): hash the template,
+   look it up, expand the placeholders as the game does.
+3. The pane in `3ds_port/src/3ds_bottom_ui.c`, with a kanji bitmap font (Shinonome) and a
+   small font for the readings (misaki or k8x12); licences checked before a build is
+   shared.
+4. Later: tap a word for its meaning (JMdict, CC BY-SA).
 
 ## Open questions
 
