@@ -1,0 +1,89 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: Japanese contest results title layout
+Applies after 0055-local-wireless.patch; apply with tools/bootstrap.py.
+
+The Japanese ROM draws the contest results title bar with its own tilemaps:
+the rank is 8x2 tiles (the link title too), the category 5x2 and "contest"
+5x2, at the positions of the Japanese LoadContestResultsTitleBarTilemaps.
+tools/localize_japanese.py stages those tilemaps and the results tiles only
+into a tree with this patch (it looks for CONTEST_TITLE_JAPANESE).
+
+--- a/src/contest_util.c
++++ b/src/contest_util.c
+@@ -1427,6 +1427,69 @@
+ #define CONTEST_TITLE_SPANISH 0
+ #endif
+ 
++#if defined(PORT_BRIDGE) && GAME_LANGUAGE == LANGUAGE_JAPANESE
++#define CONTEST_TITLE_JAPANESE 1
++#else
++#define CONTEST_TITLE_JAPANESE 0
++#endif
++
++#if CONTEST_TITLE_JAPANESE
++// The Japanese title bar, as the Japanese ROM draws it: the rank (8x2 tiles, also
++// for link contests) at x 5, the category (5x2) at x 13 (14 in a link contest) and
++// "contest" (5x2) at x 19, or 18 after the cute and smart categories.
++static void LoadContestResultsTitleBarTilemaps(void)
++{
++    const u16 *rank;
++    u8 palette;
++    int x = 13, titleX = 19;
++
++    if (gLinkContestFlags & LINK_CONTEST_FLAG_IS_LINK)
++    {
++        rank = gContestResultsTitle_Link_Tilemap;
++        x = 14;
++    }
++    else if (gSpecialVar_ContestRank == CONTEST_RANK_NORMAL)
++        rank = gContestResultsTitle_Normal_Tilemap;
++    else if (gSpecialVar_ContestRank == CONTEST_RANK_SUPER)
++        rank = gContestResultsTitle_Super_Tilemap;
++    else if (gSpecialVar_ContestRank == CONTEST_RANK_HYPER)
++        rank = gContestResultsTitle_Hyper_Tilemap;
++    else // CONTEST_RANK_MASTER
++        rank = gContestResultsTitle_Master_Tilemap;
++    CopyToBgTilemapBufferRect(2, rank, 5, 1, 8, 2);
++
++    if (gSpecialVar_ContestCategory == CONTEST_CATEGORY_COOL)
++    {
++        palette = 0;
++        CopyToBgTilemapBufferRect(2, gContestResultsTitle_Cool_Tilemap, x, 1, 5, 2);
++    }
++    else if (gSpecialVar_ContestCategory == CONTEST_CATEGORY_BEAUTY)
++    {
++        palette = 1;
++        CopyToBgTilemapBufferRect(2, gContestResultsTitle_Beauty_Tilemap, x, 1, 5, 2);
++    }
++    else if (gSpecialVar_ContestCategory == CONTEST_CATEGORY_CUTE)
++    {
++        palette = 2;
++        titleX = 18;
++        CopyToBgTilemapBufferRect(2, gContestResultsTitle_Cute_Tilemap, x, 1, 5, 2);
++    }
++    else if (gSpecialVar_ContestCategory == CONTEST_CATEGORY_SMART)
++    {
++        palette = 3;
++        titleX = 18;
++        CopyToBgTilemapBufferRect(2, gContestResultsTitle_Smart_Tilemap, x, 1, 5, 2);
++    }
++    else // CONTEST_CATEGORY_TOUGH
++    {
++        palette = 4;
++        CopyToBgTilemapBufferRect(2, gContestResultsTitle_Tough_Tilemap, x, 1, 5, 2);
++    }
++
++    CopyToBgTilemapBufferRect(2, gContestResultsTitle_Tilemap, titleX, 1, 5, 2);
++    CopyToBgTilemapBufferRect_ChangePalette(2, sContestResults->tilemapBuffers[2], 0, 0, 32, 4, palette);
++}
++#else
+ static void LoadContestResultsTitleBarTilemaps(void)
+ {
+     u8 palette;
+@@ -1490,6 +1553,7 @@
+     CopyToBgTilemapBufferRect(2, gContestResultsTitle_Tilemap, CONTEST_TITLE_SPANISH ? 15 : x, y, CONTEST_TITLE_SPANISH ? 5 : 6, 2);
+     CopyToBgTilemapBufferRect_ChangePalette(2, sContestResults->tilemapBuffers[2], 0, 0, 32, 4, palette);
+ }
++#endif
+ 
+ // Represented on results board as stars
+ static u8 GetNumPreliminaryPoints(u8 monIndex, bool8 capPoints)
