@@ -109,6 +109,7 @@
 #include "3ds_input.h"
 #include "3ds_log.h"
 #include "3ds_platform.h"
+#include "3ds_reading.h"
 #include "3ds_video.h"
 
 /* Exported by the game under PLATFORM_3DS, or not exported by its headers. */
@@ -2368,6 +2369,9 @@ typedef struct
 {
     u8 mode, screen, pressed, gender, inBattle;
     u8 title;                         /* MODE_OFF on the title screen */
+    /* The reading pane's message and page (3ds_reading.h), 0 for none:
+     * while it has the screen nothing else is read. */
+    u32 reading;
     u8 enabled;                       /* bit per column screen */
     /* Party, for the SAVE screen's icons. */
     MonView party[PARTY_SIZE];
@@ -2690,6 +2694,19 @@ static u8 CurrentMode(void)
         return MODE_BATTLE_INFO;
     }
     return MODE_FIELD;
+}
+
+/*
+ * The reading pane's message and page (3ds_reading.h), where it may have the
+ * screen: the field, a battle between its menus, and before the game starts
+ * (the professor's welcome) - not under a legendary's cutscene, which keeps
+ * the bottom screen dark. 0 for none.
+ */
+static u32 ReadingStamp(u8 mode)
+{
+    if (mode == MODE_FIELD || mode == MODE_BATTLE_INFO || (mode == MODE_OFF && !CtrVideo_StageZoomed()))
+        return CtrReading_Stamp();
+    return 0;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -3185,6 +3202,13 @@ static void Snapshot(ViewState *s, u8 mode, u8 pressed)
     s->mode = mode;
     s->pressed = pressed;
     s->pickMapsec = MAPSEC_NONE;
+    /* A message open, with the player's kanji. */
+    s->reading = ReadingStamp(mode);
+    if (s->reading)
+    {
+        s->inBattle = gMain.inBattle;
+        return;
+    }
     if (s->mode == MODE_OFF)
     {
         s->title = CtrTitleScreen_RayquazaBg() >= 0;
@@ -5843,7 +5867,7 @@ static bool8 sMapShotOk;
 
 static bool8 MapCacheable(const ViewState *s)
 {
-    return s->mode == MODE_FIELD
+    return s->mode == MODE_FIELD && !s->reading
         && (s->screen == SCR_MAP || s->screen == SCR_CARD || s->screen == SCR_SAVE || s->screen == SCR_OPTION)
         && !s->inBattle && s->bagView != BAG_VIEW_WHOLE
         && !CtrVideo_BottomInUse() && !CtrVideo_BottomWhole() && ClipIsFull();
@@ -5859,6 +5883,67 @@ static void MapCacheTake(void)
     memcpy(sMapCache.hits, sHits, sizeof(sHits));
     sMapCache.hitCount = sHitCount;
     sMapCache.valid = TRUE;
+}
+
+/*
+ * The reading pane (3ds_reading.h): the message in a box of the game's own
+ * dialogue frame, its fill and its text colours, twice the game's size as the
+ * text in it is, over the whole screen. The frame is menu.c's
+ * WindowFunc_DrawDialogueFrame: a row above the box and the same row flipped
+ * below, two tiles left of it (the edge, then fill) and the edge right.
+ */
+#define READING_WT 17   /* the box, in tiles of 16 pixels */
+#define READING_HT 13
+
+/* A 4bpp tile with every pixel a 2x2 block. */
+static void DrawTile2x(const u8 *tile, int x, int y, const u16 *pal, bool8 vflip)
+{
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+        {
+            u8 b = tile[(vflip ? 7 - r : r) * 4 + c / 2], v = c & 1 ? b >> 4 : b & 15;
+
+            if (v)
+                FillRect(x + c * 2, y + r * 2, 2, 2, pal[v]);
+        }
+}
+
+static void DrawReadingPane(const ViewState *s)
+{
+    const u8 *tiles = Port_ResolveAssetPointer(gMessageBox_Gfx);
+    const u16 *raw = Port_ResolveAssetPointer(gMessageBox_Pal);
+    /* The text's room: the white of the box and of the fill column left of
+     * it, and the white halves of the rows above and below. */
+    int x0 = 16 + 4, y0 = 16 + 2, x1 = (READING_WT + 2) * 16 - 4, y1 = (READING_HT + 1) * 16 + 6;
+    Pal pal;
+
+    CopyCache(s->inBattle && sCache[CACHE_BATTLE] ? CACHE_BATTLE : CACHE_WIDE);
+    if (!tiles || !raw)
+    {
+        FillRect(8, 8, W - 16, H - 16, TXT_WHITE);
+        CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, TXT_DARK, TXT_LIGHT);
+        return;
+    }
+    ToPals(&pal, raw, 1);
+    for (int ty = -1; ty <= READING_HT; ++ty)
+    {
+        bool8 edge = ty < 0 || ty == READING_HT;
+
+        for (int tx = -2; tx <= READING_WT; ++tx)
+        {
+            int tile;
+
+            if (edge)
+                tile = tx == -2 ? 1 : tx == -1 ? 3 : tx < READING_WT - 1 ? 4 : tx == READING_WT - 1 ? 5 : 6;
+            else if (tx == -2 || tx == -1 || tx == READING_WT)
+                tile = tx == -2 ? 7 : tx == -1 ? 9 : 10;
+            else
+                continue;
+            DrawTile2x(tiles + tile * 32, (tx + 2) * 16, (ty + 1) * 16, pal.c, ty == READING_HT);
+        }
+    }
+    FillRect(2 * 16, 16, READING_WT * 16, READING_HT * 16, pal.c[1]);
+    CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, pal.c[2], pal.c[3]);
 }
 
 /*
@@ -5910,7 +5995,9 @@ static void Render(const ViewState *s)
     sDst = sCanvas;
     sOX = 0;
 
-    if (s->mode == MODE_OFF)
+    if (s->reading)
+        DrawReadingPane(s);
+    else if (s->mode == MODE_OFF)
     {
         memset(sCanvas, 0, sizeof(sCanvas));
         if (s->title)
@@ -7517,6 +7604,7 @@ void CtrBottom_Init(void)
 {
     uint64_t start = CtrPlatform_Ticks();
 
+    CtrReading_Init();
     LoadResources();
     if (sRes.ready)
         BuildBackgroundCaches();
@@ -7778,6 +7866,7 @@ void CtrBottom_SoftReset(void)
     sIntro.phase = INTRO_NONE;
     sIntro.defer = FALSE;
     sMapCache.valid = FALSE;
+    CtrReading_Reset();
     /* A session's hold, or one CtrBottom_KeepWorld took this very frame. */
     CtrVideo_HoldTop(FALSE);
     sShown.mode = 0xFF;
@@ -7818,8 +7907,18 @@ void CtrBottom_Frame(void)
     }
     if (BattleIntro(mode))
         return;
-    pressed = ProcessTouch(mode);
-    ProcessKeys(mode);
+    /* The reading pane covers the column: its buttons take nothing, and a
+     * touch begun on them ends there. */
+    if (ReadingStamp(mode))
+    {
+        memset(&sTouch, 0, sizeof(sTouch));
+        pressed = HIT_NONE;
+    }
+    else
+    {
+        pressed = ProcessTouch(mode);
+        ProcessKeys(mode);
+    }
     OpenAsked(mode);
     RunPlan();
     RunNav(mode);
@@ -7846,6 +7945,8 @@ void CtrBottom_Frame(void)
     }
     ticks[1] = CtrPlatform_Ticks();
     Snapshot(&sState, mode, pressed);
+    if (sState.reading != sShown.reading)
+        sForceRedraw = TRUE;
 
     /* One RomFS read at most, and a single redraw once the icons are in. */
     sIconsReady = FALSE;
@@ -7947,7 +8048,8 @@ void CtrBottom_Frame(void)
         WarmBattleMenus();
     else if (mode == MODE_BATTLE_ACTION)
         WarmQuickBalls(&sShown);
-    else if (!WarmCardCache(mode))
+    /* Under the reading pane the snapshot holds none of what these read. */
+    else if (!sShown.reading && !WarmCardCache(mode))
         WarmOptionCells(mode);
     BottomProfile(frames, mode, ticks, 0);
 }

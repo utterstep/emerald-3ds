@@ -1,0 +1,194 @@
+Emerald 3DS changes to pret/pokeemerald 76463dac15cad36aca5e2b3f6366abf9e53f814f: the reading pane's hooks
+Applies after 0083-japanese-title-logo.patch; apply with tools/bootstrap.py.
+
+The bottom screen's reading pane (3ds_port/src/3ds_reading.c) shows the
+message the top screen prints in kanji with furigana, from the player's own
+data. The game tells it what a text printer starts on and how fast
+(AddTextPrinter: a message types out, a menu prints at once), which template
+each buffer it prints from was expanded from (StringExpandPlaceholders,
+outermost call only; BattleStringExpandPlaceholders;
+DynamicPlaceholderTextUtil_ExpandPlaceholders), and when a window's text goes
+(window.c: FillWindowPixelBuffer, a FillWindowPixelRect over the whole window,
+ClearWindowTilemap, RemoveWindow); text.c also says where a window's printer
+is in its text (CtrText_Progress), for the page the pane shows. Nothing the
+game does changes.
+
+--- a/src/text.c
++++ b/src/text.c
+@@ -44,6 +44,12 @@
+ #ifdef PORT_BRIDGE
+ static const u8 *ResolveTextString(const u8 *str);
+ #endif
++#ifdef PLATFORM_3DS
++// 3ds_reading.c: what a printer starts on, and how fast, for the bottom
++// screen's reading pane (the message in kanji with furigana, if the player's
++// data has it).
++void CtrReading_Printing(u8 windowId, const u8 *str, u8 speed);
++#endif
+ 
+ static EWRAM_DATA struct TextPrinter sTempTextPrinter = {0};
+ static EWRAM_DATA struct TextPrinter sTextPrinters[WINDOWS_MAX] = {0};
+@@ -352,6 +358,9 @@
+ #ifdef PORT_BRIDGE
+     sTempTextPrinter.printerTemplate.currentChar = ResolveTextString(printerTemplate->currentChar);
+ #endif
++#ifdef PLATFORM_3DS
++    CtrReading_Printing(printerTemplate->windowId, sTempTextPrinter.printerTemplate.currentChar, speed);
++#endif
+     sTempTextPrinter.callback = callback;
+     sTempTextPrinter.minLetterSpacing = 0;
+     sTempTextPrinter.japanese = NATIVE_GLYPHS_JAPANESE;
+@@ -415,6 +424,19 @@
+     return sTextPrinters[id].active;
+ }
+ 
++#ifdef PLATFORM_3DS
++// 3ds_reading.c: where a window's printer is in its text and what it waits
++// for, for the page the reading pane shows; FALSE once it is done.
++bool8 CtrText_Progress(u8 windowId, const u8 **currentChar, u8 *state)
++{
++    if (windowId >= WINDOWS_MAX || !sTextPrinters[windowId].active)
++        return FALSE;
++    *currentChar = sTextPrinters[windowId].printerTemplate.currentChar;
++    *state = sTextPrinters[windowId].state;
++    return TRUE;
++}
++#endif
++
+ static u32 RenderFont(struct TextPrinter *textPrinter)
+ {
+     u32 ret;
+--- a/src/string_util.c
++++ b/src/string_util.c
+@@ -368,11 +368,22 @@
+     return dest;
+ }
+ 
++#ifdef PLATFORM_3DS
++// 3ds_reading.c: the templates expanded into the buffers the game prints.
++void CtrReading_Expanded(const u8 *dest, const u8 *src);
++// A placeholder's own text is expanded by a call within the template's.
++static u8 sCtrExpanding;
++#endif
++
+ u8 *StringExpandPlaceholders(u8 *dest, const u8 *src)
+ {
+ #ifdef PORT_BRIDGE
+     src = ResolveTextString(src);
+ #endif
++#ifdef PLATFORM_3DS
++    if (!sCtrExpanding)
++        CtrReading_Expanded(dest, src);
++#endif
+ 
+     for (;;)
+     {
+@@ -385,7 +396,13 @@
+         case PLACEHOLDER_BEGIN:
+             placeholderId = *src++;
+             expandedString = GetExpandedPlaceholder(placeholderId);
++#ifdef PLATFORM_3DS
++            sCtrExpanding++;
++#endif
+             dest = StringExpandPlaceholders(dest, expandedString);
++#ifdef PLATFORM_3DS
++            sCtrExpanding--;
++#endif
+             break;
+         case EXT_CTRL_CODE_BEGIN:
+             *dest++ = c;
+--- a/src/battle_message.c
++++ b/src/battle_message.c
+@@ -2854,6 +2854,11 @@
+ // This ensures that custom Enigma Berry names will fit in the text buffer at the top of BattleStringExpandPlaceholders.
+ STATIC_ASSERT(BERRY_NAME_LENGTH + ARRAY_COUNT(sText_BerrySuffix) <= ITEM_NAME_LENGTH, BerryNameTooLong);
+ 
++#ifdef PLATFORM_3DS
++// 3ds_reading.c: the battle's templates, as the field's (string_util.c).
++void CtrReading_Expanded(const u8 *dest, const u8 *src);
++#endif
++
+ u32 BattleStringExpandPlaceholders(const u8 *src, u8 *dst)
+ {
+     u32 dstID = 0; // if they used dstID, why not use srcID as well?
+@@ -2863,6 +2868,9 @@
+     u8 multiplayerId;
+     s32 i;
+ 
++#ifdef PLATFORM_3DS
++    CtrReading_Expanded(dst, src);
++#endif
+     if (gBattleTypeFlags & BATTLE_TYPE_RECORDED_LINK)
+         multiplayerId = gRecordedBattleMultiplayerId;
+     else
+--- a/src/dynamic_placeholder_text_util.c
++++ b/src/dynamic_placeholder_text_util.c
+@@ -28,8 +28,16 @@
+     }
+ }
+ 
++#ifdef PLATFORM_3DS
++// 3ds_reading.c: these templates too, as string_util.c's.
++void CtrReading_Expanded(const u8 *dest, const u8 *src);
++#endif
++
+ u8 *DynamicPlaceholderTextUtil_ExpandPlaceholders(u8 *dest, const u8 *src)
+ {
++#ifdef PLATFORM_3DS
++    CtrReading_Expanded(dest, src);
++#endif
+     while (*src != EOS)
+     {
+         if (*src != CHAR_DYNAMIC)
+--- a/src/window.c
++++ b/src/window.c
+@@ -14,6 +14,11 @@
+ EWRAM_DATA static u16 sWindowSize = 0;
+ 
+ static u8 GetNumActiveWindowsOnBg(u8 bgId);
++#ifdef PLATFORM_3DS
++// 3ds_reading.c: a window's text is gone - the window wiped, or off the screen -
++// and the bottom screen's reading pane of it with it.
++void CtrReading_WindowCleared(u8 windowId, bool8 hidden);
++#endif
+ static u8 GetNumActiveWindowsOnBg8Bit(u8 bgId);
+ 
+ static const struct WindowTemplate sDummyWindowTemplate = DUMMY_WIN_TEMPLATE;
+@@ -219,6 +224,9 @@
+ {
+     u8 bgLayer = gWindows[windowId].window.bg;
+ 
++#ifdef PLATFORM_3DS
++    CtrReading_WindowCleared(windowId, TRUE);
++#endif
+     if (gWindowTileAutoAllocEnabled == TRUE)
+         BgTileAllocOp(bgLayer, gWindows[windowId].window.baseBlock, gWindows[windowId].window.width * gWindows[windowId].window.height, 2);
+ 
+@@ -367,6 +375,7 @@
+ #ifdef PLATFORM_3DS
+     if (windowId >= WINDOWS_MAX) // e.g. WINDOW_NONE: the GBA reads past gWindows
+         return;
++    CtrReading_WindowCleared(windowId, TRUE);
+ #endif
+     struct Window windowLocal = gWindows[windowId];
+ 
+@@ -446,6 +455,11 @@
+     pixelRect.pixels = gWindows[windowId].tileData;
+     pixelRect.width = 8 * gWindows[windowId].window.width;
+     pixelRect.height = 8 * gWindows[windowId].window.height;
++#ifdef PLATFORM_3DS
++    // The whole window, as main_menu.c's NewGameBirchSpeech_ClearWindow does.
++    if (x == 0 && y == 0 && width >= pixelRect.width && height >= pixelRect.height)
++        CtrReading_WindowCleared(windowId, FALSE);
++#endif
+ 
+     FillBitmapRect4Bit(&pixelRect, x, y, width, height, fillValue);
+ }
+@@ -464,6 +478,7 @@
+ #ifdef PLATFORM_3DS
+     if (windowId >= WINDOWS_MAX) // e.g. WINDOW_NONE: the GBA reads past gWindows
+         return;
++    CtrReading_WindowCleared(windowId, FALSE);
+ #endif
+     int fillSize = gWindows[windowId].window.width * gWindows[windowId].window.height;
+     CpuFastFill8(fillValue, gWindows[windowId].tileData, 32 * fillSize);

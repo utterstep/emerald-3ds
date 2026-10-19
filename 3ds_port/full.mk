@@ -71,6 +71,8 @@ BACKEND_SRCS += src/3ds_game_full.c src/3ds_game_bridge.c src/3ds_script_loader.
 BACKEND_SRCS += src/3ds_bottom_ui.c
 # The battle's info boxes at the screen's resolution (3ds_battle_hud.h).
 BACKEND_SRCS += src/3ds_battle_hud.c
+# The message in kanji with furigana on the bottom screen (3ds_reading.h).
+BACKEND_SRCS += src/3ds_reading.c
 build/bridge/3ds_bottom_ui.o: FULLCFLAGS += -DCTR_APP_VERSION='"$(APP_VERSION)"'
 # The ENHANCEMENTS and CHEATS pages of OPTIONS (include/3ds_extras.h).
 BACKEND_SRCS += src/3ds_extras.c

@@ -62,8 +62,10 @@ FORBIDDEN_DIRS = {"__pycache__", ".claude", ".agents", "validation", "romfs_gene
                   "private_assets", "hgss_followers"}
 # HeartGold/SoulSilver's follower sprites, as fetched (BTX0) or converted
 # (FMN1, builder/emerald3ds_builder/followers.py): the builder downloads them
-# on the player's computer; no repository or release carries them.
-FORBIDDEN_MAGIC = (b"BTX0", b"FMN1")
+# on the player's computer; no repository or release carries them. Nor the
+# reading pane's table (FGT3, 3ds_port/scripts/gen_furigana.py), made from the
+# player's own text.
+FORBIDDEN_MAGIC = (b"BTX0", b"FMN1", b"FGT3")
 FORBIDDEN_NAMES = [re.compile(r"^session-.*\.md$", re.I), re.compile(r"^baserom.*", re.I)]
 # RomFS may only carry these hand-written files; anything else there is output.
 ROMFS_ALLOWED = {".gitignore", "boot.txt"}

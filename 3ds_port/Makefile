@@ -226,8 +226,22 @@ else
 ROMFS_FOLLOWERS :=
 endif
 
+# The reading pane's kanji and furigana (scripts/gen_furigana.py, src/3ds_reading.c):
+# the player's own conversion of the Japanese text, in a folder outside the
+# repository that FURIGANA_DIR names (in local.mk), with the fonts beside it.
+# Optional data outside the ABI, as the followers: never in a release.
+FURIGANA_DIR ?=
+ifneq ($(wildcard $(FURIGANA_DIR)/out/furigana.json),)
+ROMFS_FURIGANA := romfs/furigana/table.bin romfs/furigana/font.bin
+$(ROMFS_FURIGANA) &: scripts/gen_furigana.py $(FURIGANA_DIR)/out/furigana.json $(ROOT)/charmap.txt \
+		$(FURIGANA_DIR)/fonts/mplusround/MPLUSRounded1c-Medium.ttf
+	"$(PYTHON)" scripts/gen_furigana.py --dir $(FURIGANA_DIR) --charmap $(ROOT)/charmap.txt --out romfs
+else
+ROMFS_FURIGANA :=
+endif
+
 $(TARGET).3dsx: build/$(TARGET)_3dsx.elf $(TARGET).smdh romfs/boot.txt $(ROMFS_DATA_OUTS) romfs/engine/abi.bin romfs/engine/build_id.bin $(EMBED_MARKER) \
-	$(ROMFS_FOLLOWERS)
+	$(ROMFS_FOLLOWERS) $(ROMFS_FURIGANA)
 	$(DEVKITPRO)/tools/bin/3dsxtool $< $@ --smdh=$(TARGET).smdh --romfs=romfs
 
 # Release: the executable with engine files only. Its game data is the data
@@ -242,11 +256,11 @@ release: build/$(TARGET)_3dsx.elf $(TARGET).smdh romfs/boot.txt $(ROMFS_DATA_OUT
 
 # The data pack, built from this tree's own staging: the release path, tested
 # without the builder.
-pak: romfs/engine/abi.bin
+pak: romfs/engine/abi.bin $(ROMFS_FURIGANA)
 	"$(PYTHON)" $(SCRIPTS)/staging.py pak --romfs romfs --out build/emerald3ds.pak --game-config $(ROOT)/include/constants/global.h
 
 # Loose game data for sdmc:/3ds/emerald3ds/devdata/ (see tools/dev_assets.py).
-devdata: romfs/engine/abi.bin
+devdata: romfs/engine/abi.bin $(ROMFS_FURIGANA)
 	"$(PYTHON)" $(SCRIPTS)/staging.py devdata --romfs romfs --out build/devdata
 
 verify: all verify-input
