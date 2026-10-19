@@ -10,14 +10,21 @@ it is derived from the game's text. This writes, into OUTDIR (the romfs):
 
   furigana/table.bin  every annotated message, keyed by a hash of the game's
                       bytes for its kana (the template the game prints from),
+                      with the dictionary word of each of its kanji groups,
                       and the character each of the game's bytes stands for;
-  furigana/font.bin   the glyphs those messages and the game's characters
-                      need, rendered from M PLUS Rounded 1c (fonts/mplusround)
-                      at the screen's own resolution, 16 levels of ink a pixel:
-                      the text at 24 pixels and its readings at 12, and 18 and
-                      10 for a page too long for those.
+  furigana/font.bin   the glyphs those messages, the game's characters and the
+                      word popup need, rendered from M PLUS Rounded 1c
+                      (fonts/mplusround) at the screen's own resolution, 16
+                      levels of ink a pixel: the text at 24 pixels and its
+                      readings at 12, and 18 and 10 for a page too long for
+                      those;
+  furigana/dict.bin   those words' readings and glosses and their kanji's
+                      details, if dict/words.json is there
+                      (scripts/furigana_words.py);
+  furigana/english.bin  each message's English line, for the word log, if
+                      worklist.json is there.
 
-Without DIR there is nothing to write and the pane stays off. Both formats are
+Without DIR there is nothing to write and the pane stays off. The formats are
 read by 3ds_reading.c; the numbers below are its.
 """
 import argparse
@@ -29,8 +36,16 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-TABLE_MAGIC = b"FGT4"
+TABLE_MAGIC = b"FGT5"
 FONT_MAGIC = b"FGF3"
+DICT_MAGIC = b"FGD1"
+ENGLISH_MAGIC = b"FGE1"
+NO_WORD = 0xFFFF
+
+# What the word popup writes besides the words: its glosses and labels, any
+# kana a dictionary form or a kanji's readings take.
+POPUP_CHARS = ({chr(c) for c in range(0x20, 0x7F)} | {chr(c) for c in range(0x3041, 0x3097)}
+               | {chr(c) for c in range(0x30A1, 0x30FB)} | set("ー、・小中▶"))
 
 # Tokens of an annotated message; anything else is a character (UCS-2).
 TOK_RUBY = 0xE000      # base characters follow
@@ -262,6 +277,48 @@ def face_block(font_path: Path, size: int, chars) -> tuple:
     return header + entries + data, missing
 
 
+def english_line(text: str) -> str:
+    """A message's English, as the word log writes it: one line, names in
+    capitals, the game's controls left out."""
+    text = text.replace("\\n", " ").replace("\\l", " ").replace("\\p", " ")
+    text = re.sub(r"\{(PLAYER|RIVAL)\}", lambda m: m.group(1), text)
+    text = re.sub(r"\{STR_VAR_\d\}", "...", text)
+    text = re.sub(r"\{[^}]*\}", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def utf16(text: str) -> bytes:
+    return b"".join(struct.pack("<H", ord(c)) for c in text if ord(c) < 0x10000)
+
+
+def dict_block(words: list, kanji: dict) -> bytes:
+    """The words, in the order the table numbers them: their dictionary form
+    and reading (UCS-2) and gloss (ASCII); then each kanji, by code, with its
+    stroke count, school grade, on and kun readings (、 between) and meaning."""
+    strings = bytearray()
+    word_offsets = []
+    for w in words:
+        word_offsets.append(len(strings))
+        gloss = w["gloss"].encode("ascii", "replace")[:255]
+        strings += struct.pack("<BBBB", len(w["word"]), len(w["reading"]), len(gloss), 0)
+        strings += utf16(w["word"]) + utf16(w["reading"]) + gloss
+        if len(strings) % 2:
+            strings.append(0)
+    rows = []
+    for c in sorted(kanji):
+        k = kanji[c]
+        on, kun = "、".join(k["on"]), "、".join(k["kun"])
+        meaning = k["meaning"].encode("ascii", "replace")[:255]
+        rows.append(struct.pack("<HBBI", ord(c), min(k["strokes"], 255), min(k["grade"], 255), len(strings)))
+        strings += struct.pack("<BBBB", len(on), len(kun), len(meaning), 0) + utf16(on) + utf16(kun) + meaning
+        if len(strings) % 2:
+            strings.append(0)
+    while len(strings) % 4:
+        strings.append(0)
+    return (DICT_MAGIC + struct.pack("<III", len(words), len(rows), len(strings))
+            + b"".join(struct.pack("<I", o) for o in word_offsets) + b"".join(rows) + strings)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dir", type=Path, required=True, help="the kanji conversion's folder")
@@ -274,6 +331,11 @@ def main() -> int:
     game_map = [ord(shown(c)) if c and b < CHAR_DYNAMIC else 0 for b, c in enumerate(chars)]
 
     messages = json.loads((args.dir / "out" / "furigana.json").read_text(encoding="utf-8"))
+    words_path = args.dir / "dict" / "words.json"
+    words = json.loads(words_path.read_text(encoding="utf-8")) if words_path.exists() else None
+    worklist_path = args.dir / "worklist.json"
+    english = ({w["key"]: english_line(w.get("en") or "") for w in json.loads(worklist_path.read_text(encoding="utf-8"))}
+               if worklist_path.exists() else {})
     entries = {}
     unencodable = clashes = 0
     text_chars, reading_chars = set(), set()
@@ -285,10 +347,14 @@ def main() -> int:
             continue
         toks = tokens(parts)
         key = fnv1a64(template[:-1])
-        if key in entries and entries[key] != toks:
+        if key in entries and entries[key][0] != toks:
             clashes += 1
             continue
-        entries[key] = toks
+        groups = toks.count(TOK_RUBY)
+        ids = (words or {}).get("messages", {}).get(m["key"], [])
+        ids = [i if i >= 0 else NO_WORD for i in ids] if len(ids) == groups else [NO_WORD] * groups
+        if key not in entries:
+            entries[key] = (toks, ids, english.get(m["key"], ""))
         in_ruby = False
         for t in toks:
             if t == TOK_RUBY_TEXT:
@@ -299,15 +365,35 @@ def main() -> int:
                 (reading_chars if in_ruby else text_chars).add(chr(t))
     # The game's own characters reach the pane through the placeholders.
     text_chars.update(chr(u) for u in game_map if u)
+    # The word popup: words in the text's faces, readings, glosses and the
+    # kanji's details in the readings'.
+    text_chars |= POPUP_CHARS
+    reading_chars |= POPUP_CHARS
+    if words:
+        for w in words["words"]:
+            text_chars.update(w["word"])
+            reading_chars.update(w["reading"])
+        for k in words["kanji"].values():
+            reading_chars.update("".join(k["on"] + k["kun"]))
 
     blob = bytearray()
     index = []
+    lines = []
     for key in sorted(entries):
         index.append(struct.pack("<QI", key, len(blob)))
-        toks = entries[key]
+        toks, ids, line = entries[key]
         blob += struct.pack("<H", len(toks)) + b"".join(struct.pack("<H", t) for t in toks)
+        blob += struct.pack("<H", len(ids)) + b"".join(struct.pack("<H", i) for i in ids)
+        lines.append(line.encode("utf-8"))
     table = (TABLE_MAGIC + struct.pack("<III", len(index), len(blob), 0)
              + b"".join(struct.pack("<H", u) for u in game_map) + b"".join(index) + blob)
+    offsets, at = [], 0
+    for line in lines:
+        offsets.append(at)
+        at += len(line)
+    offsets.append(at)
+    english_bin = (ENGLISH_MAGIC + struct.pack("<I", len(lines)) + b"".join(struct.pack("<I", o) for o in offsets)
+                   + b"".join(lines))
 
     font_path = args.dir / "fonts" / FONT_FILE
     font = bytearray(FONT_MAGIC + struct.pack("<BBBB", len(FACES), 0, 0, 0))
@@ -319,14 +405,20 @@ def main() -> int:
 
     out = args.out / "furigana"
     out.mkdir(parents=True, exist_ok=True)
-    for name, data in (("table.bin", table), ("font.bin", bytes(font))):
+    files = [("table.bin", table), ("font.bin", bytes(font))]
+    if words:
+        files.append(("dict.bin", dict_block(words["words"], words["kanji"])))
+    if english:
+        files.append(("english.bin", english_bin))
+    for name, data in files:
         path = out / name
         if not path.exists() or path.read_bytes() != data:
             path.write_bytes(data)
-    print("furigana: %d messages, %d text characters, %d reading characters, font %d KiB; %d not the game's "
-          "text, %d hash clashes, missing glyphs: %s" % (len(entries), len(text_chars), len(reading_chars),
-                                                         len(font) // 1024, unencodable, clashes,
-                                                         "".join(sorted(missing)) or "none"))
+    print("furigana: %d messages, %d text characters, %d reading characters, font %d KiB, %s, %s; %d not the "
+          "game's text, %d hash clashes, missing glyphs: %s"
+          % (len(entries), len(text_chars), len(reading_chars), len(font) // 1024,
+             "%d words" % len(words["words"]) if words else "no words", "English" if english else "no English",
+             unencodable, clashes, "".join(sorted(missing)) or "none"))
     return 0
 
 

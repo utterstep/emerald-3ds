@@ -8,12 +8,16 @@
  *
  * The annotated text is the player's own, made from their ROM and kept out of
  * the repository (scripts/gen_furigana.py): furigana/table.bin maps a hash of
- * the game's bytes for each message's template to its tokens, and
- * furigana/font.bin holds its glyphs, M PLUS Rounded 1c rendered at the
- * screen's own resolution with 16 levels of ink: the text at 24 pixels with
- * its readings at 12, and 18 and 10 for a page too long for those. The text
- * has the game's colours and shadow. Both files are optional data: without
- * them CtrReading_Stamp is always 0 and the bottom screen is as it was.
+ * the game's bytes for each message's template to its tokens and the
+ * dictionary word of each of its kanji groups, and furigana/font.bin holds
+ * its glyphs, M PLUS Rounded 1c rendered at the screen's own resolution with
+ * 16 levels of ink: the text at 24 pixels with its readings at 12, and 18 and
+ * 10 for a page too long for those. The text has the game's colours and
+ * shadow. furigana/dict.bin has the words' readings and glosses (JMdict) and
+ * their kanji's details (KANJIDIC2), furigana/english.bin each message's
+ * English line. All are optional data: without the table CtrReading_Stamp is
+ * always 0 and the bottom screen is as it was; without the dictionary a tapped
+ * word shows its kanji and reading only.
  *
  * The game tells this file what it prints (text.c's AddTextPrinter) and what
  * it expanded into the buffers it prints from (StringExpandPlaceholders,
@@ -21,7 +25,7 @@
  * A printed text that is a template of the table, or a buffer expanded from
  * one, is the message on show. The values of its placeholders - the player's
  * name, a Pokémon's - are read off the printed text by matching the template's
- * own bytes around them, and drawn as the game spells them.
+ * own bytes around them, and drawn as the game printed them.
  *
  * Only a message that types out is one: menus and labels print at once.
  *
@@ -34,12 +38,23 @@
  * printer waits for a button, the game's down arrow bounces after the text,
  * twice its size as the box is, in step with the top screen's.
  *
+ * A tap on a word in kanji opens a small box over the pane with its reading
+ * and meaning, and a tap on the box goes through its kanji (readings, strokes,
+ * school grade) and back; a tap elsewhere closes it. Each word opened is
+ * written to the word log, sdmc:/3ds/emerald3ds/words.tsv, with the sentence
+ * and its English line, for Anki. The last messages stay in a backlog: a pull
+ * down on the pane, or from the top edge of the bottom screen in the field
+ * and in a battle, shows them all, the newest last, to scroll through and tap
+ * as the pane, in a box of its own colours with りれき under it; a pull back up
+ * past the newest, the next message or another screen closes it.
+ *
  * The pane goes as the text does on the top screen: when its
  * window is wiped once the message is printed or taken off the screen
  * (window.c, the message box closing among them), when another text replaces
  * it there, when the screen that printed it goes, and in the field when the
  * player can move again.
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -61,11 +76,19 @@
 bool8 CtrText_Progress(u8 windowId, const u8 **currentChar, u8 *state, u8 *arrow);
 
 /* scripts/gen_furigana.py's formats. */
-#define TABLE_MAGIC 0x34544746  /* "FGT4" */
+#define TABLE_MAGIC 0x35544746  /* "FGT5" */
 #define FONT_MAGIC 0x33464746   /* "FGF3" */
+#define DICT_MAGIC 0x31444746   /* "FGD1" */
+#define ENGLISH_MAGIC 0x31454746 /* "FGE1" */
 #define TABLE_HEADER 16
 #define GAME_MAP_SIZE (256 * 2)
 #define FACE_HEADER 12
+#define DICT_HEADER 16
+#define NO_WORD 0xFFFF
+
+#ifndef CTR_READING_LOG_PATH
+#define CTR_READING_LOG_PATH CTR_DATA_DIR "words.tsv"
+#endif
 
 enum
 {
@@ -113,9 +136,17 @@ typedef struct
 /* font.bin's faces, in its order. */
 enum { FACE_TEXT, FACE_RUBY, FACE_TEXT_SMALL, FACE_RUBY_SMALL, FACE_COUNT };
 
+/* A kanji of dict.bin. */
+typedef struct
+{
+    u16 code;
+    u8 strokes, grade;
+    u32 offset;
+} Kanji;
+
 static struct
 {
-    u8 *table, *font;
+    u8 *table, *font, *dict;
     u32 count, blobSize;
     const u16 *gameMap;
     const Entry *index;
@@ -123,6 +154,11 @@ static struct
     Face faces[FACE_COUNT];
     /* The game's down arrow and its dark one: three frames of 8x16, 4bpp. */
     u8 *arrows[2];
+    /* The dictionary: each word's place in the strings, each kanji. */
+    u32 wordCount, kanjiCount, stringsSize;
+    const u32 *words;
+    const Kanji *kanji;
+    const u8 *strings;
 } sData;
 
 #define MAX_TEXT 1024
@@ -132,6 +168,19 @@ typedef struct
 {
     u16 start, length;
 } Span;
+
+/* A message as printed: its tokens and the word of each of its groups, the
+ * text the game printed (its placeholders' values read off it) and its place
+ * in the table, for its English line. */
+typedef struct
+{
+    const u16 *tokens, *words;
+    u16 count, wordCount, length;
+    u32 entry;
+    u8 holeCount;
+    Span holes[MAX_HOLES];
+    u8 text[MAX_TEXT];
+} Message;
 
 static struct
 {
@@ -145,17 +194,39 @@ static struct
     u32 printedTo;
     s8 arrow;
     MainCallback callback2;
-    const u16 *tokens;
-    u16 count;
-    /* What the printer reads, and a copy of it: its buffer may be written
-     * again while the pane still shows the message. */
+    /* What the printer reads; the message keeps a copy of it, as its buffer
+     * may be written again while the pane still shows it. */
     const u8 *printed;
-    u16 length;
-    u8 text[MAX_TEXT];
-    Span holes[MAX_HOLES];
-    u8 holeCount;
     u32 serial;
+    Message m;
 } sMsg;
+
+/* The backlog: the last messages, the oldest at sLogNext once it is full. */
+#define BACKLOG 32
+static Message sLog[BACKLOG];
+static int sLogCount, sLogNext;
+
+/* What has the screen besides the page: the backlog, scrolled `scroll`
+ * pixels back from its end, and the word box. `version` changes with either,
+ * for the bottom screen to draw them. */
+static struct
+{
+    bool8 backlog;
+    int scroll, height;
+    MainCallback callback2;
+    u32 version;
+} sView;
+
+static struct
+{
+    bool8 on, top;
+    u8 page, baseCount, readingCount;
+    u16 word;
+    const u16 *base, *reading;
+    const Message *msg;
+    /* Where it was drawn, for the taps on it. */
+    int x0, y0, x1, y1;
+} sPopup;
 
 /* The latest expansions, newest last: a printed buffer is looked up here for
  * the template it came from. */
@@ -165,6 +236,11 @@ static struct
     const u8 *dest, *src;
 } sExpanded[EXPANDED_KEEP];
 static u8 sExpandedNext;
+
+static void Changed(void)
+{
+    ++sView.version;
+}
 
 /* ------------------------------------------------------------------------ */
 /* The data                                                                 */
@@ -195,9 +271,36 @@ static void Unload(void)
 {
     free(sData.table);
     free(sData.font);
+    free(sData.dict);
     free(sData.arrows[0]);
     free(sData.arrows[1]);
     memset(&sData, 0, sizeof(sData));
+}
+
+/* dict.bin, if the player's data has it: a tapped word's reading and meaning. */
+static void LoadDictionary(void)
+{
+    u32 size = 0, magic, header[3];
+
+    if (!CtrData_Exists("furigana/dict.bin") || !(sData.dict = CtrData_Load("furigana/dict.bin", &size)))
+        return;
+    memcpy(&magic, sData.dict, 4);
+    if (size >= DICT_HEADER)
+        memcpy(header, sData.dict + 4, sizeof(header));
+    if (magic != DICT_MAGIC || size < DICT_HEADER
+     || (u64)DICT_HEADER + (u64)header[0] * 4 + (u64)header[1] * sizeof(Kanji) + header[2] > size)
+    {
+        CtrLog_Write(CTR_LOG_ERROR, "reading pane: furigana/dict.bin is not a dictionary");
+        free(sData.dict);
+        sData.dict = NULL;
+        return;
+    }
+    sData.wordCount = header[0];
+    sData.kanjiCount = header[1];
+    sData.stringsSize = header[2];
+    sData.words = (const u32 *)(sData.dict + DICT_HEADER);
+    sData.kanji = (const Kanji *)(sData.words + sData.wordCount);
+    sData.strings = (const u8 *)(sData.kanji + sData.kanjiCount);
 }
 
 void CtrReading_Init(void)
@@ -255,14 +358,71 @@ void CtrReading_Init(void)
             sData.arrows[i] = NULL;
         }
     }
-    CtrLog_Write(CTR_LOG_GAME, "reading pane: %lu messages, %u characters, %u for readings", (unsigned long)sData.count,
-                 sData.faces[FACE_TEXT].count, sData.faces[FACE_RUBY].count);
+    LoadDictionary();
+    CtrLog_Write(CTR_LOG_GAME, "reading pane: %lu messages, %u characters, %u for readings, %lu words",
+                 (unsigned long)sData.count, sData.faces[FACE_TEXT].count, sData.faces[FACE_RUBY].count,
+                 (unsigned long)sData.wordCount);
 }
 
 void CtrReading_Reset(void)
 {
     sMsg.on = FALSE;
+    sPopup.on = FALSE;
+    sView.backlog = FALSE;
+    sLogCount = sLogNext = 0;
     memset(sExpanded, 0, sizeof(sExpanded));
+    Changed();
+}
+
+/* A word of dict.bin: its dictionary form and reading (UCS-2), its gloss. */
+static bool8 DictWord(u16 id, const u16 **word, u8 *wordLength, const u16 **reading, u8 *readingLength,
+                      const char **gloss, u8 *glossLength)
+{
+    const u8 *s;
+
+    if (!sData.dict || id >= sData.wordCount || sData.words[id] + 4 > sData.stringsSize)
+        return FALSE;
+    s = sData.strings + sData.words[id];
+    if (sData.words[id] + 4 + (s[0] + s[1]) * 2 + s[2] > sData.stringsSize)
+        return FALSE;
+    *wordLength = s[0];
+    *readingLength = s[1];
+    *glossLength = s[2];
+    *word = (const u16 *)(s + 4);
+    *reading = *word + s[0];
+    *gloss = (const char *)(*reading + s[1]);
+    return TRUE;
+}
+
+/* A kanji of dict.bin: its on and kun readings (、 between) and meaning. */
+static const Kanji *DictKanji(u16 code, const u16 **on, u8 *onLength, const u16 **kun, u8 *kunLength,
+                              const char **meaning, u8 *meaningLength)
+{
+    int lo = 0, hi = sData.dict ? (int)sData.kanjiCount : 0;
+    const u8 *s;
+
+    while (lo < hi)
+    {
+        int mid = (lo + hi) / 2;
+
+        if (sData.kanji[mid].code < code)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    if (!sData.dict || lo >= (int)sData.kanjiCount || sData.kanji[lo].code != code
+     || sData.kanji[lo].offset + 4 > sData.stringsSize)
+        return NULL;
+    s = sData.strings + sData.kanji[lo].offset;
+    if (sData.kanji[lo].offset + 4 + (s[0] + s[1]) * 2 + s[2] > sData.stringsSize)
+        return NULL;
+    *onLength = s[0];
+    *kunLength = s[1];
+    *meaningLength = s[2];
+    *on = (const u16 *)(s + 4);
+    *kun = *on + s[0];
+    *meaning = (const char *)(*kun + s[1]);
+    return &sData.kanji[lo];
 }
 
 /* ------------------------------------------------------------------------ */
@@ -309,9 +469,11 @@ static u64 Hash(const u8 *s, u32 length)
     return h;
 }
 
-static const u16 *Find(u64 key, u16 *count)
+/* The table's message for a template: its tokens and words, and its place. */
+static bool8 Find(u64 key, Message *m)
 {
-    u32 lo = 0, hi = sData.count, keyLo = (u32)key, keyHi = (u32)(key >> 32);
+    u32 lo = 0, hi = sData.count, keyLo = (u32)key, keyHi = (u32)(key >> 32), offset;
+    u16 n, words;
 
     while (lo < hi)
     {
@@ -323,20 +485,23 @@ static const u16 *Find(u64 key, u16 *count)
         else
             hi = mid;
     }
-    if (lo < sData.count && sData.index[lo].hi == keyHi && sData.index[lo].lo == keyLo)
-    {
-        u32 offset = sData.index[lo].offset;
-        u16 n;
-
-        if (offset + 2 > sData.blobSize)
-            return NULL;
-        memcpy(&n, sData.blob + offset, 2);
-        if (offset + 2 + (u32)n * 2 > sData.blobSize)
-            return NULL;
-        *count = n;
-        return (const u16 *)(sData.blob + offset + 2);
-    }
-    return NULL;
+    if (lo >= sData.count || sData.index[lo].hi != keyHi || sData.index[lo].lo != keyLo)
+        return FALSE;
+    offset = sData.index[lo].offset;
+    if (offset + 2 > sData.blobSize)
+        return FALSE;
+    memcpy(&n, sData.blob + offset, 2);
+    if (offset + 4 + (u32)n * 2 > sData.blobSize)
+        return FALSE;
+    memcpy(&words, sData.blob + offset + 2 + (u32)n * 2, 2);
+    if (offset + 4 + ((u32)n + words) * 2 > sData.blobSize)
+        return FALSE;
+    m->tokens = (const u16 *)(sData.blob + offset + 2);
+    m->count = n;
+    m->words = m->tokens + n + 1;
+    m->wordCount = words;
+    m->entry = lo;
+    return TRUE;
 }
 
 /*
@@ -404,16 +569,24 @@ static bool8 Match(const u8 *t, const Span *lits, int k, int holes, const u8 *e,
     return FALSE;
 }
 
+/* The new message on show joins the backlog. */
+static void Log(const Message *m)
+{
+    sLog[sLogNext] = *m;
+    sLogNext = (sLogNext + 1) % BACKLOG;
+    if (sLogCount < BACKLOG)
+        ++sLogCount;
+}
+
 static bool8 Show(u8 windowId, const u8 *tmpl, const u8 *printed)
 {
     static unsigned mismatches;
+    static Message m;
     Span lits[MAX_HOLES + 1], found[MAX_HOLES];
     u32 tlen = Length(tmpl), elen;
-    const u16 *tokens;
-    u16 count;
     int holes;
 
-    if (tlen >= MAX_TEXT || !(tokens = Find(Hash(tmpl, tlen), &count)))
+    if (tlen >= MAX_TEXT || !Find(Hash(tmpl, tlen), &m))
         return FALSE;
     elen = Length(printed);
     holes = Split(tmpl, tlen, lits);
@@ -427,14 +600,14 @@ static bool8 Show(u8 windowId, const u8 *tmpl, const u8 *printed)
             CtrLog_Write(CTR_LOG_GAME, "reading pane: a printed text does not match its template");
         return FALSE;
     }
-    memcpy(sMsg.text, printed, elen);
-    sMsg.text[elen] = EOS;
-    memcpy(sMsg.holes, found, sizeof(Span) * holes);
-    sMsg.holeCount = holes;
+    memcpy(m.text, printed, elen);
+    m.text[elen] = EOS;
+    memcpy(m.holes, found, sizeof(Span) * holes);
+    m.holeCount = holes;
+    m.length = elen;
+    sMsg.m = m;
+    Log(&m);
     sMsg.printed = printed;
-    sMsg.length = elen;
-    sMsg.tokens = tokens;
-    sMsg.count = count;
     sMsg.window = windowId;
     sMsg.page = 0;
     sMsg.scrolls = 0;
@@ -445,6 +618,11 @@ static bool8 Show(u8 windowId, const u8 *tmpl, const u8 *printed)
     if (++sMsg.serial >= 1u << 20)
         sMsg.serial = 1;
     sMsg.on = TRUE;
+    /* The next message closes the word box and the backlog: the pane has the
+     * screen again. */
+    sPopup.on = FALSE;
+    sView.backlog = FALSE;
+    Changed();
     return TRUE;
 }
 
@@ -455,6 +633,14 @@ void CtrReading_Expanded(const u8 *dest, const u8 *src)
     sExpanded[sExpandedNext].dest = dest;
     sExpanded[sExpandedNext].src = src;
     sExpandedNext = (sExpandedNext + 1) % EXPANDED_KEEP;
+}
+
+static void Hide(void)
+{
+    if (sMsg.on && sPopup.on && sPopup.msg == &sMsg.m)
+        sPopup.on = FALSE;
+    sMsg.on = FALSE;
+    Changed();
 }
 
 void CtrReading_Printing(u8 windowId, const u8 *str, u8 speed)
@@ -468,7 +654,7 @@ void CtrReading_Printing(u8 windowId, const u8 *str, u8 speed)
     if (speed == 0 || speed == TEXT_SKIP_DRAW)
     {
         if (sMsg.on && windowId == sMsg.window)
-            sMsg.on = FALSE;
+            Hide();
         return;
     }
     for (int i = 1; i <= EXPANDED_KEEP; ++i)
@@ -485,7 +671,7 @@ void CtrReading_Printing(u8 windowId, const u8 *str, u8 speed)
     if ((tmpl && Show(windowId, tmpl, str)) || Show(windowId, str, str))
         return;
     if (sMsg.on && windowId == sMsg.window)
-        sMsg.on = FALSE;
+        Hide();
 }
 
 void CtrReading_WindowCleared(u8 windowId, u8 hidden)
@@ -498,7 +684,7 @@ void CtrReading_WindowCleared(u8 windowId, u8 hidden)
     /* A printer wipes its own window at a page break: the message goes on. */
     if (!hidden && CtrText_Progress(windowId, &cur, &state, &arrow))
         return;
-    sMsg.on = FALSE;
+    Hide();
 }
 
 /*
@@ -515,22 +701,22 @@ static void UpdatePage(void)
     u8 state, arrow;
     u32 end, clears = 0, scrolls = 0, lastScrolls = 0;
 
-    if (!CtrText_Progress(sMsg.window, &cur, &state, &arrow) || cur < sMsg.printed || cur > sMsg.printed + sMsg.length)
+    if (!CtrText_Progress(sMsg.window, &cur, &state, &arrow) || cur < sMsg.printed || cur > sMsg.printed + sMsg.m.length)
     {
         sMsg.printedTo = ~0u;
         sMsg.arrow = -1;
         return;
     }
     end = cur - sMsg.printed;
-    for (u32 i = 0; i < end; i += Unit(sMsg.text + i))
+    for (u32 i = 0; i < end; i += Unit(sMsg.m.text + i))
     {
-        if (sMsg.text[i] == CHAR_PROMPT_CLEAR)
+        if (sMsg.m.text[i] == CHAR_PROMPT_CLEAR)
         {
             ++clears;
             lastScrolls = scrolls;
             scrolls = 0;
         }
-        else if (sMsg.text[i] == CHAR_PROMPT_SCROLL)
+        else if (sMsg.m.text[i] == CHAR_PROMPT_SCROLL)
             ++scrolls;
     }
     if (state == RENDER_STATE_CLEAR && clears)
@@ -549,16 +735,43 @@ static void UpdatePage(void)
 
 u32 CtrReading_Stamp(void)
 {
+    if (sView.backlog && gMain.callback2 != sView.callback2)
+    {
+        sView.backlog = FALSE;
+        sPopup.on = FALSE;
+        Changed();
+    }
+    if (sMsg.on && (gMain.callback2 != sMsg.callback2 || gMain.inBattle != sMsg.inBattle
+     || (gMain.callback2 == CB2_Overworld && !ArePlayerFieldControlsLocked() && !ScriptContext_IsEnabled())))
+        Hide();
+    if (sView.backlog)
+        return 0x80000000u | (sMsg.on ? sMsg.serial : 0);
     if (!sMsg.on)
         return 0;
-    if (gMain.callback2 != sMsg.callback2 || gMain.inBattle != sMsg.inBattle
-     || (gMain.callback2 == CB2_Overworld && !ArePlayerFieldControlsLocked() && !ScriptContext_IsEnabled()))
-    {
-        sMsg.on = FALSE;
-        return 0;
-    }
     UpdatePage();
     return (sMsg.serial << 12) | ((sMsg.page & 63) << 6) | sMsg.scrolls;
+}
+
+u32 CtrReading_View(void)
+{
+    return sView.version;
+}
+
+bool CtrReading_InBacklog(void)
+{
+    return sView.backlog;
+}
+
+bool CtrReading_OpenBacklog(void)
+{
+    if (!sData.table || sLogCount == 0)
+        return FALSE;
+    sView.backlog = TRUE;
+    sView.scroll = 0;
+    sView.callback2 = gMain.callback2;
+    sPopup.on = FALSE;
+    Changed();
+    return TRUE;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -566,20 +779,26 @@ u32 CtrReading_Stamp(void)
 /* ------------------------------------------------------------------------ */
 
 /* Between a word's readings and its kanji, under each line, and between two
- * words' readings side by side. */
+ * words' readings side by side; between two messages of the backlog. */
 #define RUBY_GAP 2
 #define LINE_GAP 5
 #define RUBY_SPACE 3
+#define MESSAGE_GAP 12
 /* The down arrow: twice the game's size, as the box's frame, a little after
  * the text. */
 #define ARROW_SCALE 2
 #define ARROW_GAP 3
+/* The backlog's りれき, under its text: what tells it from the pane, with its
+ * box's colours (3ds_bottom_ui.c). */
+#define TITLE_H 16
 
-/* The box the page is in (CtrReading_Draw), kept for the frames after. */
+/* The box the page is in (CtrReading_Draw), kept for the frames after; what
+ * may be drawn on, [clip[0], clip[2]) x [clip[1], clip[3]). */
 static struct
 {
     u16 *canvas;
     int w, h, x0, y0, x1, y1;
+    int clip[4];
     u16 pal[16];
     bool8 valid;
 } sBox;
@@ -596,9 +815,17 @@ static void Dirty(int x0, int y0, int x1, int y1)
     sDirty[3] = max(sDirty[3], y1);
 }
 
+static void Clip(int x0, int y0, int x1, int y1)
+{
+    sBox.clip[0] = max(x0, 0);
+    sBox.clip[1] = max(y0, 0);
+    sBox.clip[2] = min(x1, sBox.w);
+    sBox.clip[3] = min(y1, sBox.h);
+}
+
 static void Put(int x, int y, u16 colour)
 {
-    if (x >= 0 && x < sBox.w && y >= 0 && y < sBox.h)
+    if (x >= sBox.clip[0] && x < sBox.clip[2] && y >= sBox.clip[1] && y < sBox.clip[3])
         sBox.canvas[x * sBox.h + (sBox.h - 1 - y)] = colour;
 }
 
@@ -655,14 +882,14 @@ static void DrawGlyph(const Face *f, u16 code, int x, int top, u16 colour)
     {
         int py = top + g->y + y;
 
-        if (py < 0 || py >= sBox.h)
+        if (py < sBox.clip[1] || py >= sBox.clip[3])
             continue;
         for (int i = 0; i < g->w; ++i)
         {
             u32 a = i & 1 ? row[i >> 1] & 15 : row[i >> 1] >> 4;
             int px = x + g->x + i;
 
-            if (a && px >= 0 && px < sBox.w)
+            if (a && px >= sBox.clip[0] && px < sBox.clip[2])
             {
                 u16 *d = &sBox.canvas[px * sBox.h + (sBox.h - 1 - py)];
 
@@ -681,6 +908,23 @@ static void DrawChar(const Face *f, u16 code, int x, int top)
     DrawGlyph(f, code, x, top, sBox.pal[2]);
 }
 
+/* A run of characters (UCS-2), and where it ends. */
+static int DrawRun(const Face *f, const u16 *s, int n, int x, int top)
+{
+    for (int i = 0; i < n; x += Advance(f, s[i]), ++i)
+        DrawChar(f, s[i], x, top);
+    return x;
+}
+
+static int RunWidth(const Face *f, const u16 *s, int n)
+{
+    int w = 0;
+
+    for (int i = 0; i < n; ++i)
+        w += Advance(f, s[i]);
+    return w;
+}
+
 /* What a page is laid out in: characters, words in kanji with their
  * readings, line breaks; each with where in the printed text it appears. */
 enum { PIECE_CHAR, PIECE_RUBY, PIECE_BREAK };
@@ -688,7 +932,7 @@ enum { PIECE_CHAR, PIECE_RUBY, PIECE_BREAK };
 typedef struct
 {
     u8 kind, baseCount, readingCount;
-    u16 code, at;
+    u16 code, at, word;
     u16 readingAt;              /* PIECE_RUBY: its readings' places, in sReadingAt */
     const u16 *base, *reading;
 } Piece;
@@ -698,6 +942,8 @@ static Piece sPieces[MAX_PIECES];
 static int sPieceCount;
 static u16 sReadingAt[1024];
 static int sReadingAtCount;
+/* The message the pieces are of. */
+static const Message *sPieceMsg;
 
 static void AddPiece(u8 kind, u16 code, u32 at)
 {
@@ -712,21 +958,21 @@ static void AddPiece(u8 kind, u16 code, u32 at)
 
 /* From e, past what prints nothing (a colour, a pause), to the printed text's
  * next character. */
-static u32 NextShown(u32 e)
+static u32 NextShown(const Message *m, u32 e)
 {
-    while (e < sMsg.length && sMsg.text[e] == EXT_CTRL_CODE_BEGIN)
-        e += Unit(sMsg.text + e);
+    while (e < m->length && m->text[e] == EXT_CTRL_CODE_BEGIN)
+        e += Unit(m->text + e);
     return e;
 }
 
 /* A placeholder's value, as the game printed it. */
-static void AddHole(int hole)
+static void AddHole(const Message *m, int hole)
 {
-    u32 e = sMsg.holes[hole].start, end = e + sMsg.holes[hole].length;
+    u32 e = m->holes[hole].start, end = e + m->holes[hole].length;
 
-    for (; e < end; e += Unit(sMsg.text + e))
+    for (; e < end; e += Unit(m->text + e))
     {
-        u8 c = sMsg.text[e];
+        u8 c = m->text[e];
 
         if (c < CHAR_DYNAMIC && sData.gameMap[c])
             AddPiece(PIECE_CHAR, sData.gameMap[c], e);
@@ -735,9 +981,9 @@ static void AddHole(int hole)
 
 /* The page with something on it at or before the printer's: a message that
  * ends with a page break has an empty one after it. */
-static u16 ChoosePage(u16 page)
+static u16 ChoosePage(const Message *m, u16 page)
 {
-    const u16 *t = sMsg.tokens, *end = sMsg.tokens + sMsg.count;
+    const u16 *t = m->tokens, *end = m->tokens + m->count;
     u16 p = 0, chosen = 0;
     bool8 filled = FALSE;
 
@@ -756,48 +1002,52 @@ static u16 ChoosePage(u16 page)
     return chosen;
 }
 
-/*
- * The pieces of page `page`, each with where in the printed text it appears.
- * The tokens and the printed text are walked together: a token's character
- * stands for a printed one, a word's reading for its kana, a run of
- * placeholders for what the game expanded it to, an icon for its two bytes,
- * a break for the game's; a colour or a pause has no token.
- */
-static void BuildPieces(u16 page)
-{
-    const u16 *t = sMsg.tokens, *end = sMsg.tokens + sMsg.count;
-    u32 e = 0;
-    u16 p = 0;
+#define ALL_PAGES 0xFFFF
 
+/*
+ * The pieces of page `page` of a message (ALL_PAGES: all of them, a page break
+ * a line break), each with where in the printed text it appears. The tokens
+ * and the printed text are walked together: a token's character stands for a
+ * printed one, a word's reading for its kana, a run of placeholders for what
+ * the game expanded it to, an icon for its two bytes, a break for the game's;
+ * a colour or a pause has no token. A word is the k-th group's of the message.
+ */
+static void BuildPieces(const Message *m, u16 page)
+{
+    const u16 *t = m->tokens, *end = m->tokens + m->count;
+    u32 e = 0;
+    u16 p = 0, group = 0;
+
+    sPieceMsg = m;
     sPieceCount = 0;
     sReadingAtCount = 0;
-    while (t < end && p <= page)
+    while (t < end && (page == ALL_PAGES || p <= page))
     {
         u16 c = *t++;
-        bool8 here = p == page;
+        bool8 here = page == ALL_PAGES || p == page;
 
         if (c == TOK_PAGE || c == TOK_NEWLINE || c == TOK_SCROLL)
         {
-            e = NextShown(e) + 1;
+            e = NextShown(m, e) + 1;
             if (c == TOK_PAGE)
                 ++p;
-            else if (here)
+            if (here && (c != TOK_PAGE || (page == ALL_PAGES && t < end)))
                 AddPiece(PIECE_BREAK, 0, e);
         }
         else if (c >= TOK_HOLE && c < TOK_HOLE_END)
         {
             int hole = c - TOK_HOLE;
 
-            if (hole < sMsg.holeCount)
+            if (hole < m->holeCount)
             {
                 if (here)
-                    AddHole(hole);
-                e = sMsg.holes[hole].start + sMsg.holes[hole].length;
+                    AddHole(m, hole);
+                e = m->holes[hole].start + m->holes[hole].length;
             }
         }
         else if (c >= TOK_ICON && c < TOK_ICON_END)
         {
-            u32 at = NextShown(e);
+            u32 at = NextShown(m, e);
 
             for (int n = c - TOK_ICON; n > 0 && t < end; --n, ++t)
                 if (here)
@@ -814,7 +1064,7 @@ static void BuildPieces(u16 page)
             reading = ++t;
             for (; t < end && *t != TOK_RUBY_END; ++t)
             {
-                e = NextShown(e);
+                e = NextShown(m, e);
                 if (here && sReadingAtCount < (int)ARRAY_COUNT(sReadingAt))
                     sReadingAt[sReadingAtCount++] = e;
                 ++e;
@@ -829,14 +1079,16 @@ static void BuildPieces(u16 page)
                 u->reading = reading;
                 u->readingCount = t - reading;
                 u->readingAt = first;
+                u->word = group < m->wordCount ? m->words[group] : NO_WORD;
                 /* The word in kanji with the first kana of its reading. */
                 u->at = sReadingAt[first];
             }
+            ++group;
             ++t;
         }
         else if (c < TOK_RUBY || c > 0xF8FF)
         {
-            e = NextShown(e);
+            e = NextShown(m, e);
             if (here)
                 AddPiece(PIECE_CHAR, c, e);
             ++e;
@@ -846,20 +1098,12 @@ static void BuildPieces(u16 page)
 
 static int BaseWidth(const Piece *u)
 {
-    int w = 0;
-
-    for (int i = 0; i < u->baseCount; ++i)
-        w += Advance(sText, u->base[i]);
-    return w;
+    return RunWidth(sText, u->base, u->baseCount);
 }
 
 static int ReadingWidth(const Piece *u)
 {
-    int w = 0;
-
-    for (int i = 0; i < u->readingCount; ++i)
-        w += Advance(sRuby, u->reading[i]);
-    return w;
+    return RunWidth(sRuby, u->reading, u->readingCount);
 }
 
 /* The game's word gap: a full-width space. */
@@ -907,6 +1151,11 @@ static int LineInk(void)
     return (sRuby->inkBottom - sRuby->inkTop) + RUBY_GAP + (sText->inkBottom - sText->inkTop);
 }
 
+static int LinePitch(void)
+{
+    return LineInk() + LINE_GAP;
+}
+
 /* Each glyph of the page where it goes, with where in the printed text it
  * appears, and whether it is on the screen yet. */
 typedef struct
@@ -922,6 +1171,22 @@ static int sItemCount, sItemsLeft;
 /* Where the text ends, after its last character: the down arrow's place. */
 static int sEndX, sEndY;
 
+/* Each word in kanji on the screen, where a tap finds it. */
+typedef struct
+{
+    s16 x0, y0, x1, y1;
+    u16 at, word;
+    u8 baseCount, readingCount;
+    const u16 *base, *reading;
+    const Message *msg;
+} Target;
+
+#define MAX_TARGETS 256
+static Target sTargets[MAX_TARGETS];
+static int sTargetCount;
+/* The rows pieces are placed in: lines wholly outside are left out. */
+static int sPlaceTop = -0x7FFF, sPlaceBottom = 0x7FFF;
+
 static void AddItem(u16 at, u16 code, int x, int top, bool8 ruby)
 {
     if (sItemCount < MAX_ITEMS)
@@ -935,12 +1200,18 @@ static void PlacePiece(const Piece *u, int x, int y, int padLeft)
 {
     int textTop = y + (sRuby->inkBottom - sRuby->inkTop) + RUBY_GAP - sText->inkTop;
 
+    if (y + LineInk() <= sPlaceTop || y >= sPlaceBottom)
+        return;
     if (u->kind == PIECE_CHAR)
         AddItem(u->at, u->code, x, textTop, FALSE);
     else if (u->kind == PIECE_RUBY)
     {
         int bx = x + padLeft, rx = bx + BaseWidth(u) / 2 - ReadingWidth(u) / 2;
 
+        if (sTargetCount < MAX_TARGETS)
+            sTargets[sTargetCount++] = (Target){bx - 2, y - 2, bx + BaseWidth(u) + 2, y + LineInk() + 3, u->at,
+                                                u->word, u->baseCount, u->readingCount, u->base, u->reading,
+                                                sPieceMsg};
         for (int i = 0; i < u->baseCount; bx += Advance(sText, u->base[i]), ++i)
             AddItem(u->at, u->base[i], bx, textTop, FALSE);
         for (int k = 0; k < u->readingCount; rx += Advance(sRuby, u->reading[k]), ++k)
@@ -949,16 +1220,16 @@ static void PlacePiece(const Piece *u, int x, int y, int padLeft)
 }
 
 /*
- * Lays out the page from (x0, y0), `width` wide and at most `lines` lines,
- * and places its glyphs if `place`; the lines it takes, or more than `lines`
- * if it does not fit. Lines wrap at the game's word gaps, as its own lines
- * break: a phrase that would run past the edge starts the next line, unless
- * it is longer than a line, and a wrapped line does not start with a gap. Two
- * words' readings side by side keep RUBY_SPACE between them.
+ * Lays out the pieces from (x0, y0), `width` wide and at most `lines` lines,
+ * and places their glyphs if `place`; the lines they take, or more than
+ * `lines` if they do not fit. Lines wrap at the game's word gaps, as its own
+ * lines break: a phrase that would run past the edge starts the next line,
+ * unless it is longer than a line, and a wrapped line does not start with a
+ * gap. Two words' readings side by side keep RUBY_SPACE between them.
  */
 static int Layout(int x0, int y0, int width, int lines, bool8 place)
 {
-    int x = 0, line = 0, rubyEnd = -1, pitch = LineInk() + LINE_GAP;
+    int x = 0, line = 0, rubyEnd = -1, pitch = LinePitch();
 
     for (int i = 0; i < sPieceCount; ++i)
     {
@@ -1013,7 +1284,7 @@ static int Layout(int x0, int y0, int width, int lines, bool8 place)
 /* The lines a height holds in the faces the page is set in. */
 static int LinesIn(int height)
 {
-    return height < LineInk() ? 0 : (height - LineInk()) / (LineInk() + LINE_GAP) + 1;
+    return height < LineInk() ? 0 : (height - LineInk()) / LinePitch() + 1;
 }
 
 /* The page without its first line. */
@@ -1030,13 +1301,13 @@ static void DropLine(void)
 }
 
 /* Draws the glyphs the printer has printed that are not on the screen yet. */
-static void DrawPrinted(void)
+static void DrawPrinted(u32 printedTo)
 {
     for (int i = 0; i < sItemCount; ++i)
     {
         Item *it = &sItems[i];
 
-        if (it->drawn || it->at >= sMsg.printedTo)
+        if (it->drawn || it->at >= printedTo)
             continue;
         DrawChar(it->ruby ? sRuby : sText, it->code, it->x, it->top);
         it->drawn = TRUE;
@@ -1092,22 +1363,12 @@ static void UpdateArrow(void)
         DrawArrow(from);
 }
 
-void CtrReading_Draw(u16 *canvas, int width, int height, int x0, int y0, int x1, int y1, const u16 *pal)
+/* The page on show, as far as the printer has printed it. */
+static void DrawPage(int x0, int y0, int x1, int y1)
 {
     int middle;
 
-    sBox.canvas = canvas;
-    sBox.w = width;
-    sBox.h = height;
-    sBox.x0 = x0;
-    sBox.y0 = y0;
-    sBox.x1 = x1;
-    sBox.y1 = y1;
-    memcpy(sBox.pal, pal, sizeof(sBox.pal));
-    sBox.valid = FALSE;
-    if (!sMsg.on || !sData.table)
-        return;
-    BuildPieces(ChoosePage(sMsg.page));
+    BuildPieces(&sMsg.m, ChoosePage(&sMsg.m, sMsg.page));
     /* The large faces if the page fits in them, else the small ones. */
     sText = &sData.faces[FACE_TEXT];
     sRuby = &sData.faces[FACE_RUBY];
@@ -1129,22 +1390,491 @@ void CtrReading_Draw(u16 *canvas, int width, int height, int x0, int y0, int x1,
     sArrowX = min(sEndX + ARROW_GAP, x1 + 4 - 8 * ARROW_SCALE);
     sArrowY = middle - 9 * ARROW_SCALE;
     sArrowShown = -1;
-    sBox.valid = TRUE;
-    DrawPrinted();
+    DrawPrinted(sMsg.printedTo);
     UpdateArrow();
+}
+
+/* The backlog's messages, the oldest first. */
+static const Message *LogMessage(int i)
+{
+    return &sLog[(sLogNext + BACKLOG - sLogCount + i) % BACKLOG];
+}
+
+static const u16 sTitle[] = {0x308A, 0x308C, 0x304D};   /* りれき */
+
+/*
+ * The backlog: every message it keeps, whole and in the small faces, the
+ * newest at the bottom of the box, scrolled sView.scroll pixels back; りれき
+ * under them.
+ */
+static void DrawBacklog(int x0, int y0, int x1, int y1)
+{
+    int bottom = y1 - TITLE_H, height = 0, y;
+
+    sText = &sData.faces[FACE_TEXT_SMALL];
+    sRuby = &sData.faces[FACE_RUBY_SMALL];
+    for (int i = 0; i < sLogCount; ++i)
+    {
+        BuildPieces(LogMessage(i), ALL_PAGES);
+        height += Layout(x0, 0, x1 - x0, 0x7FFF, FALSE) * LinePitch() + (i ? MESSAGE_GAP : 0);
+    }
+    sView.height = height;
+    sView.scroll = max(0, min(sView.scroll, height - (bottom - y0)));
+    /* Short of a box, the backlog starts at its top. */
+    y = height <= bottom - y0 ? y0 : bottom - height + sView.scroll;
+    sItemCount = 0;
+    sPlaceTop = y0;
+    sPlaceBottom = bottom;
+    Clip(x0 - 4, y0, x1 + 4, bottom);
+    for (int i = 0; i < sLogCount; ++i)
+    {
+        int lines;
+
+        BuildPieces(LogMessage(i), ALL_PAGES);
+        lines = Layout(x0, y, x1 - x0, 0x7FFF, FALSE);
+        if (y + lines * LinePitch() > y0 && y < bottom)
+            Layout(x0, y, x1 - x0, 0x7FFF, TRUE);
+        y += lines * LinePitch() + MESSAGE_GAP;
+        /* A rule in the text's shadow between two messages. */
+        if (i + 1 < sLogCount)
+            for (int x = x0; x < x1; x += 2)
+                Put(x, y - MESSAGE_GAP / 2 - 2, sBox.pal[3]);
+    }
+    sPlaceTop = -0x7FFF;
+    sPlaceBottom = 0x7FFF;
+    sItemsLeft = sItemCount;
+    DrawPrinted(~0u);
+    Clip(0, 0, sBox.w, sBox.h);
+    DrawRun(&sData.faces[FACE_RUBY], sTitle, 3, x1 - RunWidth(&sData.faces[FACE_RUBY], sTitle, 3),
+            y1 - TITLE_H + 2 - sData.faces[FACE_RUBY].inkTop);
+}
+
+void CtrReading_Draw(u16 *canvas, int width, int height, int x0, int y0, int x1, int y1, const u16 *pal)
+{
+    sBox.canvas = canvas;
+    sBox.w = width;
+    sBox.h = height;
+    sBox.x0 = x0;
+    sBox.y0 = y0;
+    sBox.x1 = x1;
+    sBox.y1 = y1;
+    memcpy(sBox.pal, pal, sizeof(sBox.pal));
+    Clip(0, 0, width, height);
+    sBox.valid = FALSE;
+    sTargetCount = 0;
+    if (!sData.table)
+        return;
+    if (sView.backlog)
+        DrawBacklog(x0, y0, x1, y1);
+    else if (sMsg.on)
+    {
+        DrawPage(x0, y0, x1, y1);
+        sBox.valid = TRUE;
+    }
 }
 
 bool CtrReading_Advance(int rect[4])
 {
-    if (!sBox.valid || !sMsg.on)
+    /* The word box and the backlog stay as they are drawn. */
+    if (!sBox.valid || !sMsg.on || sView.backlog || sPopup.on)
         return FALSE;
     sDirty[0] = sDirty[1] = 0x7FFF;
     sDirty[2] = sDirty[3] = -0x7FFF;
-    DrawPrinted();
+    DrawPrinted(sMsg.printedTo);
     UpdateArrow();
     rect[0] = max(sDirty[0], 0);
     rect[1] = max(sDirty[1], 0);
     rect[2] = min(sDirty[2], sBox.w);
     rect[3] = min(sDirty[3], sBox.h);
     return rect[0] < rect[2] && rect[1] < rect[3];
+}
+
+/* ------------------------------------------------------------------------ */
+/* The word box and the word log                                            */
+/* ------------------------------------------------------------------------ */
+
+bool CtrReading_Popup(bool *top)
+{
+    *top = sPopup.top;
+    return sPopup.on;
+}
+
+/* The kanji of the tapped word's group, past its kana (its okurigana). */
+static int KanjiOf(u16 *out, int max)
+{
+    int n = 0;
+
+    for (int i = 0; i < sPopup.baseCount && n < max; ++i)
+        if (sPopup.base[i] >= 0x3400)
+            out[n++] = sPopup.base[i];
+    return n;
+}
+
+/* ASCII as the font's characters, wrapped at spaces in `width`, `lines` at
+ * most; where it ends. */
+static int DrawAscii(const Face *f, const char *s, int n, int x0, int y, int width, int lines)
+{
+    u16 run[256];
+    int count = 0, x = x0, line = 0, top = y - f->inkTop, pitch = f->inkBottom - f->inkTop + 3;
+
+    for (int i = 0; i < n && i < 256; ++i)
+        run[count++] = (u8)s[i];
+    for (int i = 0; i < count && line < lines;)
+    {
+        int j = i, w = 0;
+
+        while (j < count && run[j] != ' ')
+            w += Advance(f, run[j++]);
+        if (x > x0 && x + w > x0 + width)
+        {
+            x = x0;
+            ++line;
+            if (line >= lines)
+                break;
+        }
+        x = DrawRun(f, run + i, j - i, x, top + line * pitch);
+        if (j < count)
+            x += Advance(f, ' ');
+        i = j + 1;
+    }
+    return y + (line + 1) * pitch;
+}
+
+static void DrawLabelled(const Face *f, const u16 *label, int labelCount, const u16 *s, int n, int x, int y)
+{
+    x = DrawRun(f, label, labelCount, x, y - f->inkTop);
+    DrawRun(f, s, n, x + f->size / 2, y - f->inkTop);
+}
+
+/* The number in the font's digits, from x; where it ends. */
+static int DrawNumber(const Face *f, unsigned n, int x, int top)
+{
+    u16 digits[6];
+    int count = 0;
+
+    do
+        digits[count++] = '0' + n % 10;
+    while ((n /= 10) && count < 6);
+    for (int i = count - 1; i >= 0; --i)
+    {
+        DrawChar(f, digits[i], x, top);
+        x += Advance(f, digits[i]);
+    }
+    return x;
+}
+
+void CtrReading_DrawPopup(u16 *canvas, int width, int height, int x0, int y0, int x1, int y1, const u16 *pal)
+{
+    static const u16 sOn[] = {0x304A, 0x3093}, sKun[] = {0x304F, 0x3093}, sStrokes[] = {0x304B, 0x304F};
+    static const u16 sKanjiNext[] = {0x304B, 0x3093, 0x3058, ' ', 0x25B6};   /* かんじ ▶ */
+    const Face *text = &sData.faces[FACE_TEXT], *ruby = &sData.faces[FACE_RUBY];
+    u16 kanji[8];
+    int count;
+
+    sBox.canvas = canvas;
+    sBox.w = width;
+    sBox.h = height;
+    memcpy(sBox.pal, pal, sizeof(sBox.pal));
+    Clip(x0 - 4, y0 - 2, x1 + 4, y1);
+    sPopup.x0 = x0 - 20;
+    sPopup.y0 = y0 - 18;
+    sPopup.x1 = x1 + 20;
+    sPopup.y1 = y1 + 10;
+    if (!sPopup.on)
+        return;
+    count = KanjiOf(kanji, ARRAY_COUNT(kanji));
+    if (sPopup.page == 0)
+    {
+        const u16 *word = sPopup.base, *reading = sPopup.reading;
+        u8 wordLength = sPopup.baseCount, readingLength = sPopup.readingCount, glossLength = 0;
+        const char *gloss = NULL;
+        int wordW, rubyW, y;
+
+        DictWord(sPopup.word, &word, &wordLength, &reading, &readingLength, &gloss, &glossLength);
+        /* The word in the text's face, its reading over it as in the pane. */
+        wordW = RunWidth(text, word, wordLength);
+        rubyW = RunWidth(ruby, reading, readingLength);
+        DrawRun(ruby, reading, readingLength, x0 + max(0, wordW - rubyW) / 2, y0 - ruby->inkTop);
+        y = y0 + (ruby->inkBottom - ruby->inkTop) + RUBY_GAP;
+        DrawRun(text, word, wordLength, x0 + max(0, rubyW - wordW) / 2, y - text->inkTop);
+        y += text->inkBottom - text->inkTop + 6;
+        if (gloss)
+            DrawAscii(ruby, gloss, glossLength, x0, y, x1 - x0, 3);
+        if (count)
+            DrawRun(ruby, sKanjiNext, ARRAY_COUNT(sKanjiNext), x1 - RunWidth(ruby, sKanjiNext, ARRAY_COUNT(sKanjiNext)),
+                    y1 - (ruby->inkBottom - ruby->inkTop) - 2 - ruby->inkTop);
+    }
+    else if (sPopup.page <= count)
+    {
+        u16 code = kanji[sPopup.page - 1];
+        const u16 *on, *kun;
+        const char *meaning;
+        u8 onLength, kunLength, meaningLength;
+        const Kanji *k = DictKanji(code, &on, &onLength, &kun, &kunLength, &meaning, &meaningLength);
+        int x = x0 + text->size + 12, y = y0, pitch = ruby->inkBottom - ruby->inkTop + 5;
+
+        /* The kanji large at the left, its details right of it. */
+        DrawChar(text, code, x0, y0 + 4 - text->inkTop);
+        if (k)
+        {
+            DrawLabelled(ruby, sOn, 2, on, onLength, x, y);
+            DrawLabelled(ruby, sKun, 2, kun, kunLength, x, y + pitch);
+            x = DrawNumber(ruby, k->strokes, x, y + 2 * pitch - ruby->inkTop);
+            x = DrawRun(ruby, sStrokes, 2, x, y + 2 * pitch - ruby->inkTop);
+            if (k->grade)
+            {
+                static const u16 sGrade[] = {0x3000, 0x5C0F};   /* 小 */
+                static const u16 sSecondary[] = {0x3000, 0x4E2D};   /* 中 */
+
+                if (k->grade <= 6)
+                {
+                    x = DrawRun(ruby, sGrade, 2, x, y + 2 * pitch - ruby->inkTop);
+                    DrawNumber(ruby, k->grade, x, y + 2 * pitch - ruby->inkTop);
+                }
+                else if (k->grade == 8)
+                    DrawRun(ruby, sSecondary, 2, x, y + 2 * pitch - ruby->inkTop);
+            }
+            DrawAscii(ruby, meaning, meaningLength, x0 + text->size + 12, y + 3 * pitch, x1 - x0 - text->size - 12, 1);
+        }
+        if (count)
+            DrawRun(ruby, sKanjiNext + 4, 1, x1 - Advance(ruby, 0x25B6),
+                    y1 - (ruby->inkBottom - ruby->inkTop) - 2 - ruby->inkTop);
+    }
+    Clip(0, 0, width, height);
+}
+
+/* UCS-2 as UTF-8, into out (n bytes at most); where it ends. */
+static char *Utf8(char *out, char *end, u16 c)
+{
+    if (c < 0x80 && out + 1 < end)
+        *out++ = c == '\t' || c == '\n' ? ' ' : (char)c;
+    else if (c < 0x800 && out + 2 < end)
+    {
+        *out++ = 0xC0 | (c >> 6);
+        *out++ = 0x80 | (c & 63);
+    }
+    else if (c >= 0x800 && out + 3 < end)
+    {
+        *out++ = 0xE0 | (c >> 12);
+        *out++ = 0x80 | ((c >> 6) & 63);
+        *out++ = 0x80 | (c & 63);
+    }
+    return out;
+}
+
+static char *Utf8Run(char *out, char *end, const u16 *s, int n)
+{
+    for (int i = 0; i < n; ++i)
+        out = Utf8(out, end, s[i]);
+    return out;
+}
+
+/* The message as Anki's furigana write it: 漢字[かんじ], a space before each
+ * word in kanji, which Anki does not show; its placeholders as printed. */
+static char *Sentence(char *out, char *end, const Message *m)
+{
+    BuildPieces(m, ALL_PAGES);
+    for (int i = 0; i < sPieceCount; ++i)
+    {
+        const Piece *u = &sPieces[i];
+
+        if (u->kind == PIECE_CHAR)
+            out = Utf8(out, end, u->code);
+        else if (u->kind == PIECE_RUBY)
+        {
+            if (i > 0)
+                out = Utf8(out, end, ' ');
+            out = Utf8Run(out, end, u->base, u->baseCount);
+            out = Utf8(out, end, '[');
+            out = Utf8Run(out, end, u->reading, u->readingCount);
+            out = Utf8(out, end, ']');
+        }
+    }
+    return out;
+}
+
+/* The message's English line, from furigana/english.bin. */
+static char *English(char *out, char *end, const Message *m)
+{
+    FILE *f = CtrData_Open("furigana/english.bin");
+    u32 head[2], at[2];
+
+    if (!f)
+        return out;
+    if (fread(head, 4, 2, f) == 2 && head[0] == ENGLISH_MAGIC && m->entry < head[1]
+     && fseek(f, 8 + m->entry * 4, SEEK_SET) == 0 && fread(at, 4, 2, f) == 2 && at[1] >= at[0]
+     && fseek(f, 8 + (head[1] + 1) * 4 + at[0], SEEK_SET) == 0)
+    {
+        u32 n = min(at[1] - at[0], (u32)(end - out - 1));
+
+        n = fread(out, 1, n, f);
+        for (u32 i = 0; i < n; ++i)
+            if (out[i] == '\t' || out[i] == '\n')
+                out[i] = ' ';
+        out += n;
+    }
+    fclose(f);
+    return out;
+}
+
+/* The word opened, as a line of the word log: its dictionary form, reading,
+ * gloss, the sentence with furigana and its English; not twice in a row. */
+static void LogWord(void)
+{
+    static u32 last;
+    char line[2048], *p = line, *end = line + sizeof(line) - 2;
+    const u16 *word = sPopup.base, *reading = sPopup.reading;
+    u8 wordLength = sPopup.baseCount, readingLength = sPopup.readingCount, glossLength = 0;
+    const char *gloss = "";
+    u32 key = sPopup.word != NO_WORD ? sPopup.word : 0x10000u | (sPopup.base[0] ^ (sPopup.reading[0] << 1));
+    FILE *f;
+    bool8 fresh;
+
+    if (key == last)
+        return;
+    last = key;
+    DictWord(sPopup.word, &word, &wordLength, &reading, &readingLength, &gloss, &glossLength);
+    p = Utf8Run(p, end, word, wordLength);
+    *p++ = '\t';
+    p = Utf8Run(p, end, reading, readingLength);
+    *p++ = '\t';
+    for (int i = 0; i < glossLength && p < end; ++i)
+        *p++ = gloss[i] == '\t' ? ' ' : gloss[i];
+    *p++ = '\t';
+    p = Sentence(p, end, sPopup.msg);
+    *p++ = '\t';
+    p = English(p, end, sPopup.msg);
+    *p++ = '\n';
+    f = fopen(CTR_READING_LOG_PATH, "r");
+    fresh = f == NULL;
+    if (f)
+        fclose(f);
+    if (!(f = fopen(CTR_READING_LOG_PATH, "a")))
+    {
+        CtrLog_Write(CTR_LOG_ERROR, "reading pane: no word log at %s", CTR_READING_LOG_PATH);
+        return;
+    }
+    /* Anki's import reads its settings from the file's head. */
+    if (fresh)
+        fputs("#separator:tab\n#html:false\n#columns:Word\tReading\tMeaning\tSentence\tEnglish\n", f);
+    fwrite(line, 1, p - line, f);
+    fclose(f);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Touch                                                                    */
+/* ------------------------------------------------------------------------ */
+
+static struct
+{
+    bool8 down, dragged, pulled;
+    int startX, startY, lastX, lastY, scroll;
+} sTouch;
+
+static const Target *TargetAt(int x, int y)
+{
+    for (int i = 0; i < sTargetCount; ++i)
+    {
+        const Target *t = &sTargets[i];
+
+        /* On the page, only a word already printed. */
+        if (x >= t->x0 && x < t->x1 && y >= t->y0 && y < t->y1
+         && (sView.backlog || t->msg != &sMsg.m || t->at < sMsg.printedTo))
+            return t;
+    }
+    return NULL;
+}
+
+static void Open(const Target *t)
+{
+    sPopup.on = TRUE;
+    sPopup.page = 0;
+    sPopup.word = t->word;
+    sPopup.base = t->base;
+    sPopup.baseCount = t->baseCount;
+    sPopup.reading = t->reading;
+    sPopup.readingCount = t->readingCount;
+    sPopup.msg = t->msg;
+    /* Over the half of the screen the word is not in. */
+    sPopup.top = (t->y0 + t->y1) / 2 >= sBox.h / 2;
+    Changed();
+    LogWord();
+}
+
+int CtrReading_Touch(int phase, int x, int y)
+{
+    if (phase == CTR_READING_DOWN)
+    {
+        sTouch.down = TRUE;
+        sTouch.dragged = sTouch.pulled = FALSE;
+        sTouch.startX = sTouch.lastX = x;
+        sTouch.startY = sTouch.lastY = y;
+        sTouch.scroll = sView.scroll;
+        return CTR_READING_TAKEN;
+    }
+    if (!sTouch.down)
+        return CTR_READING_NONE;
+    if (phase == CTR_READING_MOVE)
+    {
+        int dy = y - sTouch.startY, dx = x - sTouch.startX;
+
+        sTouch.lastX = x;
+        sTouch.lastY = y;
+        if (dy > 8 || dy < -8 || dx > 8 || dx < -8)
+            sTouch.dragged = TRUE;
+        /* The backlog follows the finger, and a pull back up past its newest
+         * message closes it, as a pull down on the page brings it. */
+        if (sView.backlog && sTouch.dragged && !sPopup.on && sTouch.scroll + dy < -40)
+        {
+            sView.backlog = FALSE;
+            sTouch.pulled = TRUE;
+            Changed();
+        }
+        else if (sView.backlog && sTouch.dragged && !sPopup.on && sTouch.scroll + dy != sView.scroll)
+        {
+            sView.scroll = max(0, sTouch.scroll + dy);
+            Changed();
+        }
+        else if (!sView.backlog && !sTouch.pulled && dy > 40 && CtrReading_OpenBacklog())
+        {
+            sTouch.pulled = TRUE;
+            sTouch.scroll = 0;
+            sTouch.startY = y;
+        }
+        return CTR_READING_TAKEN;
+    }
+    /* A tap, where it was let go. */
+    sTouch.down = FALSE;
+    x = sTouch.lastX;
+    y = sTouch.lastY;
+    if (sTouch.dragged)
+        return CTR_READING_TAKEN;
+    if (sPopup.on)
+    {
+        u16 kanji[8];
+
+        /* On the box, its next page: its kanji, then the word again. */
+        if (x >= sPopup.x0 && x < sPopup.x1 && y >= sPopup.y0 && y < sPopup.y1)
+            sPopup.page = sPopup.page < KanjiOf(kanji, ARRAY_COUNT(kanji)) ? sPopup.page + 1 : 0;
+        else
+        {
+            const Target *t = TargetAt(x, y);
+
+            sPopup.on = FALSE;
+            if (t)
+                Open(t);
+        }
+        Changed();
+        return CTR_READING_TAKEN;
+    }
+    {
+        const Target *t = TargetAt(x, y);
+
+        if (t)
+        {
+            Open(t);
+            return CTR_READING_TAKEN;
+        }
+    }
+    return sView.backlog ? CTR_READING_TAKEN : CTR_READING_MISSED;
 }

@@ -2369,9 +2369,9 @@ typedef struct
 {
     u8 mode, screen, pressed, gender, inBattle;
     u8 title;                         /* MODE_OFF on the title screen */
-    /* The reading pane's message and page (3ds_reading.h), 0 for none:
-     * while it has the screen nothing else is read. */
-    u32 reading;
+    /* The reading pane's message and page (3ds_reading.h), 0 for none, and
+     * its word box and backlog: while it has the screen nothing else is read. */
+    u32 reading, readingView;
     u8 enabled;                       /* bit per column screen */
     /* Party, for the SAVE screen's icons. */
     MonView party[PARTY_SIZE];
@@ -3206,6 +3206,7 @@ static void Snapshot(ViewState *s, u8 mode, u8 pressed)
     s->reading = ReadingStamp(mode);
     if (s->reading)
     {
+        s->readingView = CtrReading_View();
         s->inBattle = gMain.inBattle;
         return;
     }
@@ -5888,12 +5889,14 @@ static void MapCacheTake(void)
 /*
  * The reading pane (3ds_reading.h): the message in a box of the game's own
  * dialogue frame, its fill and its text colours, twice the game's size as the
- * text in it is, over the whole screen. The frame is menu.c's
+ * text in it is, over the whole screen; a tapped word's box the same way over
+ * the top or the bottom of it. The frame is menu.c's
  * WindowFunc_DrawDialogueFrame: a row above the box and the same row flipped
  * below, two tiles left of it (the edge, then fill) and the edge right.
  */
 #define READING_WT 17   /* the box, in tiles of 16 pixels */
 #define READING_HT 13
+#define POPUP_HT 4
 
 /* A 4bpp tile with every pixel a 2x2 block. */
 static void DrawTile2x(const u8 *tile, int x, int y, const u16 *pal, bool8 vflip)
@@ -5908,32 +5911,24 @@ static void DrawTile2x(const u8 *tile, int x, int y, const u16 *pal, bool8 vflip
         }
 }
 
-static void DrawReadingPane(const ViewState *s)
+/* The frame's rows from `row` (tiles of 16 pixels), its box READING_WT wide
+ * and `ht` high, filled; the text's room in it: the white of the box and of
+ * the fill column left of it, and the white halves of the rows above and
+ * below. */
+static void DrawReadingBox(const u8 *tiles, const Pal *pal, int row, int ht, int room[4])
 {
-    const u8 *tiles = Port_ResolveAssetPointer(gMessageBox_Gfx);
-    const u16 *raw = Port_ResolveAssetPointer(gMessageBox_Pal);
-    /* The text's room: the white of the box and of the fill column left of
-     * it, and the white halves of the rows above and below. */
-    int x0 = 16 + 4, y0 = 16 + 2, x1 = (READING_WT + 2) * 16 - 4, y1 = (READING_HT + 1) * 16 + 6;
-    Pal pal;
-
-    CopyCache(s->inBattle && sCache[CACHE_BATTLE] ? CACHE_BATTLE : CACHE_WIDE);
-    if (!tiles || !raw)
+    room[0] = 16 + 4;
+    room[1] = (row + 1) * 16 + 2;
+    room[2] = (READING_WT + 2) * 16 - 4;
+    room[3] = (row + ht + 1) * 16 + 6;
+    if (!tiles)
     {
-        u16 noBox[16] = {0};
-
-        noBox[1] = TXT_WHITE;
-        noBox[2] = TXT_DARK;
-        noBox[3] = TXT_LIGHT;
-        noBox[4] = TXT_RED;
-        FillRect(8, 8, W - 16, H - 16, TXT_WHITE);
-        CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, noBox);
+        FillRect(8, row * 16 + 8, W - 16, (ht + 2) * 16 - 16, TXT_WHITE);
         return;
     }
-    ToPals(&pal, raw, 1);
-    for (int ty = -1; ty <= READING_HT; ++ty)
+    for (int ty = -1; ty <= ht; ++ty)
     {
-        bool8 edge = ty < 0 || ty == READING_HT;
+        bool8 edge = ty < 0 || ty == ht;
 
         for (int tx = -2; tx <= READING_WT; ++tx)
         {
@@ -5945,11 +5940,72 @@ static void DrawReadingPane(const ViewState *s)
                 tile = tx == -2 ? 7 : tx == -1 ? 9 : 10;
             else
                 continue;
-            DrawTile2x(tiles + tile * 32, (tx + 2) * 16, (ty + 1) * 16, pal.c, ty == READING_HT);
+            DrawTile2x(tiles + tile * 32, (tx + 2) * 16, (row + ty + 1) * 16, pal->c, ty == ht);
         }
     }
-    FillRect(2 * 16, 16, READING_WT * 16, READING_HT * 16, pal.c[1]);
-    CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, pal.c);
+    FillRect(2 * 16, (row + 1) * 16, READING_WT * 16, ht * 16, pal->c[1]);
+}
+
+#define RGB565_OF(r, g, b) ((u16)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
+
+static void DrawReadingPane(const ViewState *s)
+{
+    const u8 *tiles = Port_ResolveAssetPointer(gMessageBox_Gfx);
+    const u16 *raw = Port_ResolveAssetPointer(gMessageBox_Pal);
+    int room[4];
+    bool top;
+    Pal pal;
+
+    CopyCache(s->inBattle && sCache[CACHE_BATTLE] ? CACHE_BATTLE : CACHE_WIDE);
+    if (tiles && raw)
+        ToPals(&pal, raw, 1);
+    else
+    {
+        tiles = NULL;
+        memset(&pal, 0, sizeof(pal));
+        pal.c[1] = TXT_WHITE;
+        pal.c[2] = TXT_DARK;
+        pal.c[3] = TXT_LIGHT;
+        pal.c[4] = TXT_RED;
+    }
+    /* The backlog in its own colours, so it is not taken for the message on
+     * show: the dialogue frame's greens (13, 14) in amber, its light edge and
+     * white (11, 12) and the box's fill (1) cream, the text's shadow (3) to
+     * go with it. */
+    if (CtrReading_InBacklog())
+    {
+        pal.c[1] = pal.c[12] = RGB565_OF(248, 240, 220);
+        pal.c[3] = RGB565_OF(220, 206, 180);
+        pal.c[11] = RGB565_OF(232, 220, 196);
+        pal.c[13] = RGB565_OF(240, 176, 64);
+        pal.c[14] = RGB565_OF(192, 120, 32);
+    }
+    DrawReadingBox(tiles, &pal, 0, READING_HT, room);
+    CtrReading_Draw(sCanvas, W, H, room[0], room[1], room[2], room[3], pal.c);
+    if (CtrReading_Popup(&top))
+    {
+        DrawReadingBox(tiles, &pal, top ? 0 : READING_HT - POPUP_HT, POPUP_HT, room);
+        CtrReading_DrawPopup(sCanvas, W, H, room[0], room[1], room[2], room[3], pal.c);
+    }
+}
+
+static void PressOnce(u16 keys);
+
+/* The touches while the pane has the screen: its own, but a tap on no word
+ * in a battle is A, on with the text, as a tap on its backdrop is. */
+static void ReadingTouch(u8 mode)
+{
+    const CtrInput *in = CtrInput_Get();
+    int done = CTR_READING_NONE;
+
+    if (in->touchDown)
+        done = CtrReading_Touch(CTR_READING_DOWN, in->touchX, in->touchY);
+    else if (in->touchActive)
+        done = CtrReading_Touch(CTR_READING_MOVE, in->touchX, in->touchY);
+    else if (in->touchUp)
+        done = CtrReading_Touch(CTR_READING_UP, in->touchX, in->touchY);
+    if (done == CTR_READING_MISSED && mode == MODE_BATTLE_INFO)
+        PressOnce(A_BUTTON);
 }
 
 /*
@@ -7270,6 +7326,14 @@ static u8 ProcessTouch(u8 mode)
         sTouch.lastY = in->touchY;
         if (!sTouch.dragged && (dy > 8 || dy < -8 || dx > 8 || dx < -8))
             sTouch.dragged = TRUE;
+        /* A pull from the screen's top edge brings the reading pane's backlog
+         * down (3ds_reading.h). */
+        if ((mode == MODE_FIELD || mode == MODE_BATTLE_INFO) && sTouch.startY < 16 && dy > 40
+         && CtrReading_OpenBacklog())
+        {
+            sTouch.active = FALSE;
+            return HIT_NONE;
+        }
     }
     else if (in->touchUp && sTouch.active)
     {
@@ -7913,11 +7977,12 @@ void CtrBottom_Frame(void)
     }
     if (BattleIntro(mode))
         return;
-    /* The reading pane covers the column: its buttons take nothing, and a
-     * touch begun on them ends there. */
+    /* The reading pane covers the column: its buttons take nothing, a touch
+     * begun on them ends there, and the pane has the touches. */
     if (ReadingStamp(mode))
     {
         memset(&sTouch, 0, sizeof(sTouch));
+        ReadingTouch(mode);
         pressed = HIT_NONE;
     }
     else
@@ -7951,7 +8016,7 @@ void CtrBottom_Frame(void)
     }
     ticks[1] = CtrPlatform_Ticks();
     Snapshot(&sState, mode, pressed);
-    if (sState.reading != sShown.reading)
+    if (sState.reading != sShown.reading || sState.readingView != sShown.readingView)
         sForceRedraw = TRUE;
 
     /* One RomFS read at most, and a single redraw once the icons are in. */

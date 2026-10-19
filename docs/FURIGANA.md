@@ -123,7 +123,45 @@ The code is in this repository; the text and the fonts are not.
   out with the top screen's, every character when the game prints the one it stands for
   and a word in kanji with the first kana of its reading; while the game waits for a
   button, its red down arrow bounces after the text in step with the top screen's.
-  Touches and the column's keys wait until it closes.
+  The column's keys wait until it closes; touches are the pane's (below).
+
+## Words, the word log and the backlog
+
+- **A tap on a word in kanji** opens a box over the other half of the pane: the word
+  as the dictionary writes it, its reading over it and a short English gloss. A tap on
+  the box goes through its kanji (on and kun readings, strokes, 小1-6 or 中 for the school
+  grade, meaning) and back to the word; a tap elsewhere, or the next message, closes it.
+  In a battle a tap on no word is still A, on with the text.
+- **The words** come from `scripts/furigana_words.py`, run once on the player's computer
+  (not by the build, it needs SudachiPy):
+
+  ```
+  uv run --no-project --with sudachipy --with sudachidict_core \
+      python 3ds_port/scripts/furigana_words.py --dir ~/my/emerald-furigana
+  ```
+
+  It reads JMdict and KANJIDIC2 (the EDRDG's, CC BY-SA 4.0: `JMdict_e.gz` and
+  `kanjidic2.xml.gz` in the folder's `dict/src/`, with their licence note) and writes
+  `dict/words.json`: for every group its word, from the kanji and the kana after them as
+  JMdict writes the word ([長|なが]い is 長い), or the analyser's dictionary form for a verb
+  or an adjective (待たせ is 待つ, a potential form by its verb: 勝てる is 勝つ), or the
+  kanji alone. 99.2% of the 44,716 groups find a word (4,021 words); the rest (game terms
+  such as 特防, counters) show their kanji only. The build packs only those words into
+  `furigana/dict.bin`, and each message's English line from `worklist.json` into
+  `furigana/english.bin`, both optional data as the table.
+- **The word log**: every word opened is written to `sdmc:/3ds/emerald3ds/words.tsv`,
+  not twice in a row: the word, its reading, its gloss, the message with furigana as Anki
+  writes them (`漢字[かんじ]`) and its English line. To learn them in Anki: *File →
+  Import* the file (its first lines tell Anki it is tab-separated plain text with the
+  columns Word, Reading, Meaning, Sentence, English); map them to a note type's fields,
+  and show the sentence with `{{furigana:Sentence}}`. Deleting the file starts a new
+  log.
+- **The backlog**: the last 32 messages, whole and a size smaller, the newest last. A
+  pull down on the pane opens it, and in the field and in a battle a pull down from the
+  bottom screen's top edge, the pane up or not. Its box is the dialogue frame in amber on
+  cream, with りれき under the text, so it is not taken for the message on show. Dragging
+  scrolls it and its words take taps as the pane's; a pull back up past the newest message
+  closes it, as do the next message, a menu and a new screen.
 
 Not covered yet: texts the game builds in code (contest appeal lines, Easy Chat
 speeches), texts the port adds, and descriptions shown on the game's own screens (Pokédex,
@@ -137,8 +175,10 @@ bag), which have the bottom screen to themselves.
 3. The player's builder: the conversion folder as an input of their data pack
    (`builder/emerald3ds_builder/build.py`, as the followers), and `verify` skipping
    `furigana/*` as it skips them.
-4. Later: tap a word for its meaning (JMdict, CC BY-SA).
+4. Before a build with the dictionary is shared: JMdict and KANJIDIC2 are CC BY-SA 4.0
+   with the EDRDG's attribution terms; the word list is the player's.
 
 ## Open questions
 
-- Word meanings on tap: which dictionary data, under which licence.
+- The word log's English lines name the player PLAYER: the English of a Japanese
+  player's name is not there.

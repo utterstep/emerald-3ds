@@ -4,8 +4,9 @@
 /*
  * The reading pane (3ds_reading.c, docs/FURIGANA.md): the message the top
  * screen prints, on the bottom screen in kanji with furigana, a page at a
- * time. Its data is the player's own (scripts/gen_furigana.py); without it
- * nothing is shown.
+ * time; a tapped word's reading and meaning, the word log, the backlog of the
+ * last messages. Its data is the player's own (scripts/gen_furigana.py);
+ * without it nothing is shown.
  *
  * SDK-free: the game's text code tells it what it prints, the bottom screen
  * (3ds_bottom_ui.c) asks it what to show.
@@ -40,5 +41,27 @@ void CtrReading_Draw(uint16_t *canvas, int width, int height, int x0, int y0, in
  * has printed since, and the down arrow; TRUE with the rectangle it changed,
  * [rect[0], rect[2]) x [rect[1], rect[3]). */
 bool CtrReading_Advance(int rect[4]);
+
+/* A number that changes when the word box or the backlog does: the bottom
+ * screen draws the pane again. */
+uint32_t CtrReading_View(void);
+/* The backlog, from the field or a battle (a pull from the screen's top
+ * edge); FALSE if there is nothing in it. While it is open CtrReading_Stamp
+ * is not 0, and the caller draws its box in the backlog's colours. */
+bool CtrReading_OpenBacklog(void);
+bool CtrReading_InBacklog(void);
+/* Whether the word box is open, and over the top of the screen or its bottom;
+ * the caller draws the box there and its words with CtrReading_DrawPopup,
+ * into the box's room as for CtrReading_Draw. */
+bool CtrReading_Popup(bool *top);
+void CtrReading_DrawPopup(uint16_t *canvas, int width, int height, int x0, int y0, int x1, int y1,
+                          const uint16_t *pal);
+
+/* The bottom screen's touches while the pane or the backlog has the screen. */
+enum { CTR_READING_DOWN, CTR_READING_MOVE, CTR_READING_UP };
+/* What a touch did: nothing, something (redrawn by CtrReading_View), or a
+ * tap on no word (the caller may take it as it would). */
+enum { CTR_READING_NONE, CTR_READING_TAKEN, CTR_READING_MISSED };
+int CtrReading_Touch(int phase, int x, int y);
 
 #endif

@@ -228,13 +228,16 @@ endif
 
 # The reading pane's kanji and furigana (scripts/gen_furigana.py, src/3ds_reading.c):
 # the player's own conversion of the Japanese text, in a folder outside the
-# repository that FURIGANA_DIR names (in local.mk), with the fonts beside it.
+# repository that FURIGANA_DIR names (in local.mk), with the fonts beside it,
+# and its words (dict/words.json, scripts/furigana_words.py) and English
+# lines (worklist.json) if it has them, written beside the table.
 # Optional data outside the ABI, as the followers: never in a release.
 FURIGANA_DIR ?=
 ifneq ($(wildcard $(FURIGANA_DIR)/out/furigana.json),)
 ROMFS_FURIGANA := romfs/furigana/table.bin romfs/furigana/font.bin
 $(ROMFS_FURIGANA) &: scripts/gen_furigana.py $(FURIGANA_DIR)/out/furigana.json $(ROOT)/charmap.txt \
-		$(FURIGANA_DIR)/fonts/mplusround/MPLUSRounded1c-Medium.ttf
+		$(FURIGANA_DIR)/fonts/mplusround/MPLUSRounded1c-Medium.ttf \
+		$(wildcard $(FURIGANA_DIR)/dict/words.json $(FURIGANA_DIR)/worklist.json)
 	"$(PYTHON)" scripts/gen_furigana.py --dir $(FURIGANA_DIR) --charmap $(ROOT)/charmap.txt --out romfs
 else
 ROMFS_FURIGANA :=
