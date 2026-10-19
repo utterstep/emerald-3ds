@@ -29,7 +29,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-TABLE_MAGIC = b"FGT3"
+TABLE_MAGIC = b"FGT4"
 FONT_MAGIC = b"FGF3"
 
 # Tokens of an annotated message; anything else is a character (UCS-2).
@@ -40,6 +40,7 @@ TOK_NEWLINE = 0xE003   # \n
 TOK_SCROLL = 0xE004    # \l: a new line, the box scrolls
 TOK_PAGE = 0xE005      # \p: a new page
 TOK_HOLE = 0xE100      # + n: the n-th run of placeholders, as the game expanded it
+TOK_ICON = 0xE200      # + n: the n characters after it spell one button icon or symbol
 
 # The game's control bytes (charmap.txt).
 CHAR_DYNAMIC = 0xF7
@@ -199,10 +200,14 @@ def tokens(parts) -> list:
         elif kind == "page":
             out.append(TOK_PAGE)
         elif kind == "ctrl":
-            if value[0] == CHAR_KEYPAD_ICON and value[1] < len(KEYPAD):
-                out += [ord(c) for c in KEYPAD[value[1]]]
-            elif value[0] == CHAR_EXTRA_SYMBOL and value[1] in EXTRA:
-                out += [ord(c) for c in EXTRA[value[1]]]
+            # A button icon or a symbol, whatever its spelling, stands for its
+            # two bytes, so the tokens keep step with what the game prints.
+            if value[0] == CHAR_KEYPAD_ICON:
+                text = KEYPAD[value[1]] if value[1] < len(KEYPAD) else ""
+                out += [TOK_ICON + len(text)] + [ord(c) for c in text]
+            elif value[0] == CHAR_EXTRA_SYMBOL:
+                text = EXTRA.get(value[1], "")
+                out += [TOK_ICON + len(text)] + [ord(c) for c in text]
             # Colours, pauses, sounds: nothing to read.
     return out
 

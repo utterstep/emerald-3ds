@@ -119,7 +119,11 @@ The code is in this repository; the text and the fonts are not.
   screen is on, in the box's text colour and shadow, the readings over the kanji, lines
   wrapped at the game's word gaps. 93% of pages fit at 24/12 pixels, nearly all the rest
   at 18/10; the few longer still (long scrolling passages) follow the top screen's
-  scrolling. Touches and the column's keys wait until it closes.
+  scrolling. With KANJI TYPE-OUT (OPTIONS, ENHANCEMENTS, on by default) the page types
+  out with the top screen's, every character when the game prints the one it stands for
+  and a word in kanji with the first kana of its reading; while the game waits for a
+  button, its red down arrow bounces after the text in step with the top screen's.
+  Touches and the column's keys wait until it closes.
 
 Not covered yet: texts the game builds in code (contest appeal lines, Easy Chat
 speeches), texts the port adds, and descriptions shown on the game's own screens (Pokédex,

@@ -5920,8 +5920,14 @@ static void DrawReadingPane(const ViewState *s)
     CopyCache(s->inBattle && sCache[CACHE_BATTLE] ? CACHE_BATTLE : CACHE_WIDE);
     if (!tiles || !raw)
     {
+        u16 noBox[16] = {0};
+
+        noBox[1] = TXT_WHITE;
+        noBox[2] = TXT_DARK;
+        noBox[3] = TXT_LIGHT;
+        noBox[4] = TXT_RED;
         FillRect(8, 8, W - 16, H - 16, TXT_WHITE);
-        CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, TXT_DARK, TXT_LIGHT);
+        CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, noBox);
         return;
     }
     ToPals(&pal, raw, 1);
@@ -5943,7 +5949,7 @@ static void DrawReadingPane(const ViewState *s)
         }
     }
     FillRect(2 * 16, 16, READING_WT * 16, READING_HT * 16, pal.c[1]);
-    CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, pal.c[2], pal.c[3]);
+    CtrReading_Draw(sCanvas, W, H, x0, y0, x1, y1, pal.c);
 }
 
 /*
@@ -8043,6 +8049,15 @@ void CtrBottom_Frame(void)
         }
         BottomProfile(frames, mode, ticks, 2);
         return;
+    }
+    /* The reading pane's page types out as the top screen's does, and its
+     * down arrow bounces: only what changed goes to the screen. */
+    if (sShown.reading)
+    {
+        int r[4];
+
+        if (CtrReading_Advance(r))
+            CtrBottom_BlitRect(sCanvas, r[0], r[1], r[2], r[3]);
     }
     if (mode == MODE_BATTLE_INFO)
         WarmBattleMenus();

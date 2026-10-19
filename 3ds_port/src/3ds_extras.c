@@ -248,6 +248,11 @@ const CtrExtra gCtrExtras[] =
     /* The lead Pokémon walking behind the player, on HGSS's sprites from the
      * data pack (src/follower_mon.c). */
     {CTR_EXTRAS_SCREEN(CTR_EXTRAS_ENHANCEMENTS, 1), CTR_TEXT("FOLLOWER", "ACOMPAÑANTE", "COMPAGNON", "COMPAGNO", "つれあるき"), "follower", 2, 0, gCtrExtrasOffOn, NULL, NULL, NULL},
+#if GAME_LANGUAGE == LANGUAGE_JAPANESE
+    /* The bottom screen's message in kanji types out with the top screen's,
+     * or shows its whole page at once (3ds_reading.c). */
+    {CTR_EXTRAS_SCREEN(CTR_EXTRAS_ENHANCEMENTS, 1), CTR_TEXT("KANJI TYPE-OUT", "KANJI TYPE-OUT", "KANJI TYPE-OUT", "KANJI TYPE-OUT", "かんじの もじおくり"), "reading_typeout", 2, 1, gCtrExtrasOffOn, NULL, NULL, NULL},
+#endif
     {0},
 };
 

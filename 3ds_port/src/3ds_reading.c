@@ -26,7 +26,15 @@
  * Only a message that types out is one: menus and labels print at once.
  *
  * The page is the text printer's: the page breaks it has gone past, less the
- * one it waits at. The pane goes as the text does on the top screen: when its
+ * one it waits at. With KANJI TYPE-OUT (OPTIONS, on by default) the page also
+ * types out as the top screen's does: every character of the annotation stands
+ * for characters the game prints, so each appears when they do, a word in
+ * kanji with the first kana of its reading. The page is laid out once; a
+ * frame draws only what the printer added (CtrReading_Advance). While the
+ * printer waits for a button, the game's down arrow bounces after the text,
+ * twice its size as the box is, in step with the top screen's.
+ *
+ * The pane goes as the text does on the top screen: when its
  * window is wiped once the message is printed or taken off the screen
  * (window.c, the message box closing among them), when another text replaces
  * it there, when the screen that printed it goes, and in the field when the
@@ -44,15 +52,16 @@
 #include "constants/characters.h"
 
 #include "3ds_data.h"
+#include "3ds_extras.h"
 #include "3ds_log.h"
 #include "3ds_reading.h"
 
-/* text.c: where a window's printer is in its text and what it does; FALSE
- * once it is done. */
-bool8 CtrText_Progress(u8 windowId, const u8 **currentChar, u8 *state);
+/* text.c: where a window's printer is in its text, what it does and its down
+ * arrow's step; FALSE once it is done. */
+bool8 CtrText_Progress(u8 windowId, const u8 **currentChar, u8 *state, u8 *arrow);
 
 /* scripts/gen_furigana.py's formats. */
-#define TABLE_MAGIC 0x33544746  /* "FGT3" */
+#define TABLE_MAGIC 0x34544746  /* "FGT4" */
 #define FONT_MAGIC 0x33464746   /* "FGF3" */
 #define TABLE_HEADER 16
 #define GAME_MAP_SIZE (256 * 2)
@@ -68,6 +77,10 @@ enum
     TOK_PAGE,
     TOK_HOLE = 0xE100,
     TOK_HOLE_END = 0xE200,
+    /* + n: the n characters after it spell one button icon or symbol (two of
+     * the printed text's bytes). */
+    TOK_ICON = 0xE200,
+    TOK_ICON_END = 0xE210,
 };
 
 typedef struct
@@ -108,6 +121,8 @@ static struct
     const Entry *index;
     const u8 *blob;
     Face faces[FACE_COUNT];
+    /* The game's down arrow and its dark one: three frames of 8x16, 4bpp. */
+    u8 *arrows[2];
 } sData;
 
 #define MAX_TEXT 1024
@@ -125,6 +140,10 @@ static struct
     /* The printer's page, and the lines it has scrolled on it (\l). */
     u16 page;
     u8 scrolls;
+    /* How much of the text it has printed (all of it: ~0), and the row of the
+     * down arrow's picture it shows the arrow from (-1: none). */
+    u32 printedTo;
+    s8 arrow;
     MainCallback callback2;
     const u16 *tokens;
     u16 count;
@@ -176,6 +195,8 @@ static void Unload(void)
 {
     free(sData.table);
     free(sData.font);
+    free(sData.arrows[0]);
+    free(sData.arrows[1]);
     memset(&sData, 0, sizeof(sData));
 }
 
@@ -222,6 +243,17 @@ void CtrReading_Init(void)
         CtrLog_Write(CTR_LOG_ERROR, "reading pane: furigana/font.bin is not a font");
         Unload();
         return;
+    }
+    for (int i = 0; i < 2; ++i)
+    {
+        u32 size = 0;
+
+        sData.arrows[i] = CtrData_Load(i ? "graphics/fonts/down_arrow_alt.4bpp" : "graphics/fonts/down_arrow.4bpp", &size);
+        if (sData.arrows[i] && size < 3 * 64)
+        {
+            free(sData.arrows[i]);
+            sData.arrows[i] = NULL;
+        }
     }
     CtrLog_Write(CTR_LOG_GAME, "reading pane: %lu messages, %u characters, %u for readings", (unsigned long)sData.count,
                  sData.faces[FACE_TEXT].count, sData.faces[FACE_RUBY].count);
@@ -406,6 +438,8 @@ static bool8 Show(u8 windowId, const u8 *tmpl, const u8 *printed)
     sMsg.window = windowId;
     sMsg.page = 0;
     sMsg.scrolls = 0;
+    sMsg.printedTo = 0;
+    sMsg.arrow = -1;
     sMsg.callback2 = gMain.callback2;
     sMsg.inBattle = gMain.inBattle;
     if (++sMsg.serial >= 1u << 20)
@@ -457,27 +491,36 @@ void CtrReading_Printing(u8 windowId, const u8 *str, u8 speed)
 void CtrReading_WindowCleared(u8 windowId, u8 hidden)
 {
     const u8 *cur;
-    u8 state;
+    u8 state, arrow;
 
     if (!sMsg.on || windowId != sMsg.window)
         return;
     /* A printer wipes its own window at a page break: the message goes on. */
-    if (!hidden && CtrText_Progress(windowId, &cur, &state))
+    if (!hidden && CtrText_Progress(windowId, &cur, &state, &arrow))
         return;
     sMsg.on = FALSE;
 }
 
-/* The page the printer is on, the page breaks behind it less the one it waits
- * at, and the lines it has scrolled on that page, the same way. Once it is
- * done, where it ended. */
+/*
+ * The page the printer is on, the page breaks behind it less the one it waits
+ * at, and the lines it has scrolled on that page, the same way; how much it
+ * has printed, and the row its down arrow is shown from (sDownArrowYCoords, a
+ * step behind its index, which moves on as it draws) while it waits for a
+ * button with one. Once it is done, all of it where it ended.
+ */
 static void UpdatePage(void)
 {
+    static const s8 sArrowRows[] = {0, 1, 2, 1};
     const u8 *cur;
-    u8 state;
+    u8 state, arrow;
     u32 end, clears = 0, scrolls = 0, lastScrolls = 0;
 
-    if (!CtrText_Progress(sMsg.window, &cur, &state) || cur < sMsg.printed || cur > sMsg.printed + sMsg.length)
+    if (!CtrText_Progress(sMsg.window, &cur, &state, &arrow) || cur < sMsg.printed || cur > sMsg.printed + sMsg.length)
+    {
+        sMsg.printedTo = ~0u;
+        sMsg.arrow = -1;
         return;
+    }
     end = cur - sMsg.printed;
     for (u32 i = 0; i < end; i += Unit(sMsg.text + i))
     {
@@ -499,6 +542,9 @@ static void UpdatePage(void)
         --scrolls;
     sMsg.page = clears;
     sMsg.scrolls = min(scrolls, 63);
+    sMsg.printedTo = CtrExtras_Get("reading_typeout") ? end : ~0u;
+    sMsg.arrow = (state == RENDER_STATE_CLEAR || state == RENDER_STATE_SCROLL_START) && !gTextFlags.autoScroll
+               ? sArrowRows[(arrow + 3) & 3] : -1;
 }
 
 u32 CtrReading_Stamp(void)
@@ -524,12 +570,37 @@ u32 CtrReading_Stamp(void)
 #define RUBY_GAP 2
 #define LINE_GAP 5
 #define RUBY_SPACE 3
+/* The down arrow: twice the game's size, as the box's frame, a little after
+ * the text. */
+#define ARROW_SCALE 2
+#define ARROW_GAP 3
 
-static u16 *sCanvas;
-static int sW, sH;
-static u16 sFg, sShadow;
-/* The faces a page is set in. */
+/* The box the page is in (CtrReading_Draw), kept for the frames after. */
+static struct
+{
+    u16 *canvas;
+    int w, h, x0, y0, x1, y1;
+    u16 pal[16];
+    bool8 valid;
+} sBox;
+/* The faces the page is set in. */
 static const Face *sText, *sRuby;
+/* What a frame changed: [0, 2) x [1, 3). */
+static int sDirty[4];
+
+static void Dirty(int x0, int y0, int x1, int y1)
+{
+    sDirty[0] = min(sDirty[0], x0);
+    sDirty[1] = min(sDirty[1], y0);
+    sDirty[2] = max(sDirty[2], x1);
+    sDirty[3] = max(sDirty[3], y1);
+}
+
+static void Put(int x, int y, u16 colour)
+{
+    if (x >= 0 && x < sBox.w && y >= 0 && y < sBox.h)
+        sBox.canvas[x * sBox.h + (sBox.h - 1 - y)] = colour;
+}
 
 static const Glyph *FindGlyph(const Face *f, u16 code)
 {
@@ -584,104 +655,192 @@ static void DrawGlyph(const Face *f, u16 code, int x, int top, u16 colour)
     {
         int py = top + g->y + y;
 
-        if (py < 0 || py >= sH)
+        if (py < 0 || py >= sBox.h)
             continue;
         for (int i = 0; i < g->w; ++i)
         {
             u32 a = i & 1 ? row[i >> 1] & 15 : row[i >> 1] >> 4;
             int px = x + g->x + i;
 
-            if (a && px >= 0 && px < sW)
+            if (a && px >= 0 && px < sBox.w)
             {
-                u16 *d = &sCanvas[px * sH + (sH - 1 - py)];
+                u16 *d = &sBox.canvas[px * sBox.h + (sBox.h - 1 - py)];
 
                 *d = a == 15 ? colour : Blend(*d, colour, a);
             }
         }
     }
+    Dirty(x + g->x, top + g->y, x + g->x + g->w, top + g->y + g->h);
 }
 
 /* A character in the box's text colour, over its shadow a pixel right and
  * down, as the game's text has it. */
 static void DrawChar(const Face *f, u16 code, int x, int top)
 {
-    DrawGlyph(f, code, x + 1, top + 1, sShadow);
-    DrawGlyph(f, code, x, top, sFg);
+    DrawGlyph(f, code, x + 1, top + 1, sBox.pal[3]);
+    DrawGlyph(f, code, x, top, sBox.pal[2]);
 }
 
 /* What a page is laid out in: characters, words in kanji with their
- * readings, line breaks. */
+ * readings, line breaks; each with where in the printed text it appears. */
 enum { PIECE_CHAR, PIECE_RUBY, PIECE_BREAK };
 
 typedef struct
 {
     u8 kind, baseCount, readingCount;
-    u16 code;
+    u16 code, at;
+    u16 readingAt;              /* PIECE_RUBY: its readings' places, in sReadingAt */
     const u16 *base, *reading;
 } Piece;
 
 #define MAX_PIECES 512
 static Piece sPieces[MAX_PIECES];
 static int sPieceCount;
+static u16 sReadingAt[1024];
+static int sReadingAtCount;
 
-static void AddPiece(u8 kind, u16 code)
+static void AddPiece(u8 kind, u16 code, u32 at)
 {
     if (sPieceCount < MAX_PIECES)
     {
         sPieces[sPieceCount].kind = kind;
         sPieces[sPieceCount].code = code;
+        sPieces[sPieceCount].at = at;
         ++sPieceCount;
     }
+}
+
+/* From e, past what prints nothing (a colour, a pause), to the printed text's
+ * next character. */
+static u32 NextShown(u32 e)
+{
+    while (e < sMsg.length && sMsg.text[e] == EXT_CTRL_CODE_BEGIN)
+        e += Unit(sMsg.text + e);
+    return e;
 }
 
 /* A placeholder's value, as the game printed it. */
 static void AddHole(int hole)
 {
-    const u8 *s, *end;
+    u32 e = sMsg.holes[hole].start, end = e + sMsg.holes[hole].length;
 
-    if (hole >= sMsg.holeCount)
-        return;
-    s = sMsg.text + sMsg.holes[hole].start;
-    end = s + sMsg.holes[hole].length;
-    for (; s < end; s += Unit(s))
+    for (; e < end; e += Unit(sMsg.text + e))
     {
-        if (*s < CHAR_DYNAMIC && sData.gameMap[*s])
-            AddPiece(PIECE_CHAR, sData.gameMap[*s]);
+        u8 c = sMsg.text[e];
+
+        if (c < CHAR_DYNAMIC && sData.gameMap[c])
+            AddPiece(PIECE_CHAR, sData.gameMap[c], e);
     }
 }
 
-static void BuildPieces(const u16 *t, u16 count)
+/* The page with something on it at or before the printer's: a message that
+ * ends with a page break has an empty one after it. */
+static u16 ChoosePage(u16 page)
 {
-    const u16 *end = t + count;
+    const u16 *t = sMsg.tokens, *end = sMsg.tokens + sMsg.count;
+    u16 p = 0, chosen = 0;
+    bool8 filled = FALSE;
+
+    for (; t <= end && p <= page; ++t)
+    {
+        if (t == end || *t == TOK_PAGE)
+        {
+            if (filled)
+                chosen = p;
+            ++p;
+            filled = FALSE;
+        }
+        else
+            filled = TRUE;
+    }
+    return chosen;
+}
+
+/*
+ * The pieces of page `page`, each with where in the printed text it appears.
+ * The tokens and the printed text are walked together: a token's character
+ * stands for a printed one, a word's reading for its kana, a run of
+ * placeholders for what the game expanded it to, an icon for its two bytes,
+ * a break for the game's; a colour or a pause has no token.
+ */
+static void BuildPieces(u16 page)
+{
+    const u16 *t = sMsg.tokens, *end = sMsg.tokens + sMsg.count;
+    u32 e = 0;
+    u16 p = 0;
 
     sPieceCount = 0;
-    while (t < end)
+    sReadingAtCount = 0;
+    while (t < end && p <= page)
     {
         u16 c = *t++;
+        bool8 here = p == page;
 
-        if (c == TOK_NEWLINE || c == TOK_SCROLL)
-            AddPiece(PIECE_BREAK, 0);
-        else if (c >= TOK_HOLE && c < TOK_HOLE_END)
-            AddHole(c - TOK_HOLE);
-        else if (c == TOK_RUBY && sPieceCount < MAX_PIECES)
+        if (c == TOK_PAGE || c == TOK_NEWLINE || c == TOK_SCROLL)
         {
-            Piece *u = &sPieces[sPieceCount];
-            const u16 *base = t;
+            e = NextShown(e) + 1;
+            if (c == TOK_PAGE)
+                ++p;
+            else if (here)
+                AddPiece(PIECE_BREAK, 0, e);
+        }
+        else if (c >= TOK_HOLE && c < TOK_HOLE_END)
+        {
+            int hole = c - TOK_HOLE;
+
+            if (hole < sMsg.holeCount)
+            {
+                if (here)
+                    AddHole(hole);
+                e = sMsg.holes[hole].start + sMsg.holes[hole].length;
+            }
+        }
+        else if (c >= TOK_ICON && c < TOK_ICON_END)
+        {
+            u32 at = NextShown(e);
+
+            for (int n = c - TOK_ICON; n > 0 && t < end; --n, ++t)
+                if (here)
+                    AddPiece(PIECE_CHAR, *t, at);
+            e = at + 2;
+        }
+        else if (c == TOK_RUBY)
+        {
+            const u16 *base = t, *reading;
+            int first = sReadingAtCount;
 
             while (t < end && *t != TOK_RUBY_TEXT)
                 ++t;
-            u->base = base;
-            u->baseCount = t - base;
-            u->reading = ++t;
-            while (t < end && *t != TOK_RUBY_END)
-                ++t;
-            u->readingCount = t - u->reading;
-            u->kind = PIECE_RUBY;
-            ++sPieceCount;
+            reading = ++t;
+            for (; t < end && *t != TOK_RUBY_END; ++t)
+            {
+                e = NextShown(e);
+                if (here && sReadingAtCount < (int)ARRAY_COUNT(sReadingAt))
+                    sReadingAt[sReadingAtCount++] = e;
+                ++e;
+            }
+            if (here && sPieceCount < MAX_PIECES && t > reading && sReadingAtCount - first == t - reading)
+            {
+                Piece *u = &sPieces[sPieceCount++];
+
+                u->kind = PIECE_RUBY;
+                u->base = base;
+                u->baseCount = reading - 1 - base;
+                u->reading = reading;
+                u->readingCount = t - reading;
+                u->readingAt = first;
+                /* The word in kanji with the first kana of its reading. */
+                u->at = sReadingAt[first];
+            }
             ++t;
         }
         else if (c < TOK_RUBY || c > 0xF8FF)
-            AddPiece(PIECE_CHAR, c);
+        {
+            e = NextShown(e);
+            if (here)
+                AddPiece(PIECE_CHAR, c, e);
+            ++e;
+        }
     }
 }
 
@@ -748,32 +907,56 @@ static int LineInk(void)
     return (sRuby->inkBottom - sRuby->inkTop) + RUBY_GAP + (sText->inkBottom - sText->inkTop);
 }
 
-static void DrawPiece(const Piece *u, int x, int y, int padLeft)
+/* Each glyph of the page where it goes, with where in the printed text it
+ * appears, and whether it is on the screen yet. */
+typedef struct
+{
+    u16 at, code;
+    s16 x, top;
+    u8 ruby, drawn;
+} Item;
+
+#define MAX_ITEMS 1024
+static Item sItems[MAX_ITEMS];
+static int sItemCount, sItemsLeft;
+/* Where the text ends, after its last character: the down arrow's place. */
+static int sEndX, sEndY;
+
+static void AddItem(u16 at, u16 code, int x, int top, bool8 ruby)
+{
+    if (sItemCount < MAX_ITEMS)
+    {
+        sItems[sItemCount] = (Item){at, code, x, top, ruby, FALSE};
+        ++sItemCount;
+    }
+}
+
+static void PlacePiece(const Piece *u, int x, int y, int padLeft)
 {
     int textTop = y + (sRuby->inkBottom - sRuby->inkTop) + RUBY_GAP - sText->inkTop;
 
     if (u->kind == PIECE_CHAR)
-        DrawChar(sText, u->code, x, textTop);
+        AddItem(u->at, u->code, x, textTop, FALSE);
     else if (u->kind == PIECE_RUBY)
     {
         int bx = x + padLeft, rx = bx + BaseWidth(u) / 2 - ReadingWidth(u) / 2;
 
         for (int i = 0; i < u->baseCount; bx += Advance(sText, u->base[i]), ++i)
-            DrawChar(sText, u->base[i], bx, textTop);
+            AddItem(u->at, u->base[i], bx, textTop, FALSE);
         for (int k = 0; k < u->readingCount; rx += Advance(sRuby, u->reading[k]), ++k)
-            DrawChar(sRuby, u->reading[k], rx, y - sRuby->inkTop);
+            AddItem(sReadingAt[u->readingAt + k], u->reading[k], rx, y - sRuby->inkTop, TRUE);
     }
 }
 
 /*
  * Lays out the page from (x0, y0), `width` wide and at most `lines` lines,
- * and draws it if `draw`; the lines it takes, or more than `lines` if it does
- * not fit. Lines wrap at the game's word gaps, as its own lines break: a
- * phrase that would run past the edge starts the next line, unless it is
- * longer than a line, and a wrapped line does not start with a gap. Two
+ * and places its glyphs if `place`; the lines it takes, or more than `lines`
+ * if it does not fit. Lines wrap at the game's word gaps, as its own lines
+ * break: a phrase that would run past the edge starts the next line, unless
+ * it is longer than a line, and a wrapped line does not start with a gap. Two
  * words' readings side by side keep RUBY_SPACE between them.
  */
-static int Layout(int x0, int y0, int width, int lines, bool8 draw)
+static int Layout(int x0, int y0, int width, int lines, bool8 place)
 {
     int x = 0, line = 0, rubyEnd = -1, pitch = LineInk() + LINE_GAP;
 
@@ -816,11 +999,21 @@ static int Layout(int x0, int y0, int width, int lines, bool8 draw)
             }
             rubyEnd = rx + ReadingWidth(u);
         }
-        if (draw && line < lines)
-            DrawPiece(&sPieces[i], x0 + x, y0 + line * pitch, padL);
+        if (place && line < lines)
+        {
+            PlacePiece(&sPieces[i], x0 + x, y0 + line * pitch, padL);
+            sEndX = x0 + x + w;
+            sEndY = y0 + line * pitch;
+        }
         x += w;
     }
     return line + 1;
+}
+
+/* The lines a height holds in the faces the page is set in. */
+static int LinesIn(int height)
+{
+    return height < LineInk() ? 0 : (height - LineInk()) / (LineInk() + LINE_GAP) + 1;
 }
 
 /* The page without its first line. */
@@ -836,54 +1029,85 @@ static void DropLine(void)
     sPieceCount -= i;
 }
 
-/* The lines a height holds in the faces the page is set in. */
-static int LinesIn(int height)
+/* Draws the glyphs the printer has printed that are not on the screen yet. */
+static void DrawPrinted(void)
 {
-    return height < LineInk() ? 0 : (height - LineInk()) / (LineInk() + LINE_GAP) + 1;
+    for (int i = 0; i < sItemCount; ++i)
+    {
+        Item *it = &sItems[i];
+
+        if (it->drawn || it->at >= sMsg.printedTo)
+            continue;
+        DrawChar(it->ruby ? sRuby : sText, it->code, it->x, it->top);
+        it->drawn = TRUE;
+        --sItemsLeft;
+    }
 }
 
-/* The tokens of page `page`, the last one with something on it if there are
- * fewer. */
-static const u16 *PageTokens(u16 page, u16 *count)
-{
-    const u16 *start = sMsg.tokens, *end = sMsg.tokens + sMsg.count, *t;
-    const u16 *chosen = start, *chosenEnd = end;
-    u16 n = 0;
+/* The down arrow's place, after the text with its middle on the text's (its
+ * ink is rows 5-12 of its 16), and the row it is shown from on the screen
+ * (-1: none). */
+static int sArrowX, sArrowY;
+static s8 sArrowShown;
 
-    for (t = start; t <= end; ++t)
+/* As text.c's TextPrinterDrawDownArrow: the picture's rows from `from` on, 16
+ * of them, so the arrow bounces up as `from` grows. */
+static void DrawArrow(s8 from)
+{
+    const u8 *tiles = sData.arrows[gTextFlags.useAlternateDownArrow ? 1 : 0];
+    int w = 8 * ARROW_SCALE, h = 16 * ARROW_SCALE;
+
+    if (sArrowShown >= 0)
     {
-        if (t == end || *t == TOK_PAGE)
+        for (int x = sArrowX; x < sArrowX + w; ++x)
+            for (int y = sArrowY; y < sArrowY + h; ++y)
+                Put(x, y, sBox.pal[1]);
+        Dirty(sArrowX, sArrowY, sArrowX + w, sArrowY + h);
+    }
+    sArrowShown = from;
+    if (from < 0 || !tiles)
+        return;
+    for (int r = 0; r < 16; ++r)
+    {
+        int row = from + r;
+
+        for (int c = 0; c < 8; ++c)
         {
-            if (t > start)
-            {
-                if (n <= page)
-                {
-                    chosen = start;
-                    chosenEnd = t;
-                }
-                ++n;
-            }
-            start = t + 1;
+            u8 b = tiles[(row / 8) * 32 + (row & 7) * 4 + c / 2], v = c & 1 ? b >> 4 : b & 15;
+
+            for (int k = 0; v && k < ARROW_SCALE * ARROW_SCALE; ++k)
+                Put(sArrowX + c * ARROW_SCALE + k % ARROW_SCALE, sArrowY + r * ARROW_SCALE + k / ARROW_SCALE,
+                    sBox.pal[v]);
         }
     }
-    *count = chosenEnd - chosen;
-    return chosen;
+    Dirty(sArrowX, sArrowY, sArrowX + w, sArrowY + h);
 }
 
-void CtrReading_Draw(u16 *canvas, int width, int height, int x0, int y0, int x1, int y1, u16 fg, u16 shadow)
+/* The arrow the printer shows, once the page is out. */
+static void UpdateArrow(void)
 {
-    u16 count;
-    const u16 *t;
+    s8 from = sItemsLeft > 0 ? -1 : sMsg.arrow;
 
-    sCanvas = canvas;
-    sW = width;
-    sH = height;
-    sFg = fg;
-    sShadow = shadow;
+    if (from != sArrowShown)
+        DrawArrow(from);
+}
+
+void CtrReading_Draw(u16 *canvas, int width, int height, int x0, int y0, int x1, int y1, const u16 *pal)
+{
+    int middle;
+
+    sBox.canvas = canvas;
+    sBox.w = width;
+    sBox.h = height;
+    sBox.x0 = x0;
+    sBox.y0 = y0;
+    sBox.x1 = x1;
+    sBox.y1 = y1;
+    memcpy(sBox.pal, pal, sizeof(sBox.pal));
+    sBox.valid = FALSE;
     if (!sMsg.on || !sData.table)
         return;
-    t = PageTokens(sMsg.page, &count);
-    BuildPieces(t, count);
+    BuildPieces(ChoosePage(sMsg.page));
     /* The large faces if the page fits in them, else the small ones. */
     sText = &sData.faces[FACE_TEXT];
     sRuby = &sData.faces[FACE_RUBY];
@@ -896,5 +1120,31 @@ void CtrReading_Draw(u16 *canvas, int width, int height, int x0, int y0, int x1,
      * line the top screen has scrolled to, as far back as there is room. */
     for (int skip = 0; skip < sMsg.scrolls && Layout(x0, y0, x1 - x0, 0x7FFF, FALSE) > LinesIn(y1 - y0); ++skip)
         DropLine();
+    sItemCount = 0;
+    sEndX = x0;
+    sEndY = y0;
     Layout(x0, y0, x1 - x0, LinesIn(y1 - y0), TRUE);
+    sItemsLeft = sItemCount;
+    middle = sEndY + (sRuby->inkBottom - sRuby->inkTop) + RUBY_GAP + (sText->inkBottom - sText->inkTop) / 2;
+    sArrowX = min(sEndX + ARROW_GAP, x1 + 4 - 8 * ARROW_SCALE);
+    sArrowY = middle - 9 * ARROW_SCALE;
+    sArrowShown = -1;
+    sBox.valid = TRUE;
+    DrawPrinted();
+    UpdateArrow();
+}
+
+bool CtrReading_Advance(int rect[4])
+{
+    if (!sBox.valid || !sMsg.on)
+        return FALSE;
+    sDirty[0] = sDirty[1] = 0x7FFF;
+    sDirty[2] = sDirty[3] = -0x7FFF;
+    DrawPrinted();
+    UpdateArrow();
+    rect[0] = max(sDirty[0], 0);
+    rect[1] = max(sDirty[1], 0);
+    rect[2] = min(sDirty[2], sBox.w);
+    rect[3] = min(sDirty[3], sBox.h);
+    return rect[0] < rect[2] && rect[1] < rect[3];
 }

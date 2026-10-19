@@ -10,8 +10,8 @@ outermost call only; BattleStringExpandPlaceholders;
 DynamicPlaceholderTextUtil_ExpandPlaceholders), and when a window's text goes
 (window.c: FillWindowPixelBuffer, a FillWindowPixelRect over the whole window,
 ClearWindowTilemap, RemoveWindow); text.c also says where a window's printer
-is in its text (CtrText_Progress), for the page the pane shows. Nothing the
-game does changes.
+is in its text and its down arrow's step (CtrText_Progress), for the page the
+pane shows and its arrow. Nothing the game does changes.
 
 --- a/src/text.c
 +++ b/src/text.c
@@ -38,19 +38,21 @@ game does changes.
      sTempTextPrinter.callback = callback;
      sTempTextPrinter.minLetterSpacing = 0;
      sTempTextPrinter.japanese = NATIVE_GLYPHS_JAPANESE;
-@@ -415,6 +424,19 @@
+@@ -415,6 +424,21 @@
      return sTextPrinters[id].active;
  }
  
 +#ifdef PLATFORM_3DS
-+// 3ds_reading.c: where a window's printer is in its text and what it waits
-+// for, for the page the reading pane shows; FALSE once it is done.
-+bool8 CtrText_Progress(u8 windowId, const u8 **currentChar, u8 *state)
++// 3ds_reading.c: where a window's printer is in its text, what it waits for
++// and its down arrow's step, for what the reading pane shows; FALSE once it
++// is done.
++bool8 CtrText_Progress(u8 windowId, const u8 **currentChar, u8 *state, u8 *arrow)
 +{
 +    if (windowId >= WINDOWS_MAX || !sTextPrinters[windowId].active)
 +        return FALSE;
 +    *currentChar = sTextPrinters[windowId].printerTemplate.currentChar;
 +    *state = sTextPrinters[windowId].state;
++    *arrow = ((struct TextPrinterSubStruct *)sTextPrinters[windowId].subStructFields)->downArrowYPosIdx;
 +    return TRUE;
 +}
 +#endif

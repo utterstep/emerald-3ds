@@ -10,6 +10,7 @@
  * SDK-free: the game's text code tells it what it prints, the bottom screen
  * (3ds_bottom_ui.c) asks it what to show.
  */
+#include <stdbool.h>
 #include <stdint.h>
 
 /* Loads furigana/table.bin and furigana/font.bin if the data has them. */
@@ -29,10 +30,15 @@ void CtrReading_WindowCleared(uint8_t windowId, uint8_t hidden);
 /* What the pane shows now, as a number that changes with it (the message, its
  * page and how far the page has scrolled); 0 when there is nothing to show. */
 uint32_t CtrReading_Stamp(void);
-/* Draws its page into [x0, x1) x [y0, y1) of a bottom-screen canvas
- * (column-major RGB565, as 3ds_bottom_ui.c's), in the text colour and shadow
- * of the box the caller drew there. */
-void CtrReading_Draw(uint16_t *canvas, int width, int height, int x0, int y0, int x1, int y1, uint16_t fg,
-                     uint16_t shadow);
+/* Draws its page, as far as the top screen has printed it, into [x0, x1) x
+ * [y0, y1) of a bottom-screen canvas (column-major RGB565, as
+ * 3ds_bottom_ui.c's), in the colours of the box the caller drew there: `pal`
+ * is the game's message box palette (1 its fill, 2 and 3 the text and its
+ * shadow, 4 the down arrow's red). */
+void CtrReading_Draw(uint16_t *canvas, int width, int height, int x0, int y0, int x1, int y1, const uint16_t *pal);
+/* A later frame of the same page: draws onto that canvas what the top screen
+ * has printed since, and the down arrow; TRUE with the rectangle it changed,
+ * [rect[0], rect[2]) x [rect[1], rect[3]). */
+bool CtrReading_Advance(int rect[4]);
 
 #endif
